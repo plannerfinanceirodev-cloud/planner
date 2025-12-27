@@ -16,19 +16,22 @@ export type Database = {
     Tables: {
       categoria_financeira: {
         Row: {
-          categoria: string | null
           created_at: string
+          descricao: string | null
           id: number
+          tipo: Database["public"]["Enums"]["TipoMovimentacao"]
         }
         Insert: {
-          categoria?: string | null
           created_at?: string
+          descricao?: string | null
           id?: number
+          tipo?: Database["public"]["Enums"]["TipoMovimentacao"]
         }
         Update: {
-          categoria?: string | null
           created_at?: string
+          descricao?: string | null
           id?: number
+          tipo?: Database["public"]["Enums"]["TipoMovimentacao"]
         }
         Relationships: []
       }
@@ -158,18 +161,21 @@ export type Database = {
       tipo_movimentacao: {
         Row: {
           created_at: string
+          descricao: string
           id: number
-          tipo: string | null
+          tipo: Database["public"]["Enums"]["TipoMovimentacao"]
         }
         Insert: {
           created_at?: string
+          descricao: string
           id?: number
-          tipo?: string | null
+          tipo: Database["public"]["Enums"]["TipoMovimentacao"]
         }
         Update: {
           created_at?: string
+          descricao?: string
           id?: number
-          tipo?: string | null
+          tipo?: Database["public"]["Enums"]["TipoMovimentacao"]
         }
         Relationships: []
       }
@@ -181,7 +187,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      TipoMovimentacao: "despesa" | "receita"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -308,6 +314,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      TipoMovimentacao: ["despesa", "receita"],
+    },
   },
 } as const
