@@ -30,6 +30,8 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 // --- INTERFACES ---
@@ -103,6 +105,7 @@ const CoupleFinancialPlanner: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authPasswordVisible, setAuthPasswordVisible] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
 
@@ -777,14 +780,26 @@ const CoupleFinancialPlanner: React.FC = () => {
               <label className="text-xs text-gray-600 font-bold ml-1 block mb-1">
                 Senha
               </label>
-              <input
-                type="password"
-                value={authPassword}
-                onChange={(e) => setAuthPassword(e.target.value)}
-                className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50"
-                placeholder="Sua senha"
-                required
-              />
+              <div className="relative">
+                <input
+                  type={authPasswordVisible ? 'text' : 'password'}
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  className="w-full p-3 pr-12 border border-gray-200 rounded-xl bg-gray-50"
+                  placeholder="Sua senha"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setAuthPasswordVisible((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label={
+                    authPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'
+                  }
+                >
+                  {authPasswordVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
             <button
               type="submit"
