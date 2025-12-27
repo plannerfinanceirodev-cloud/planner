@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from './supabase/client';
 import {
   PieChart,
   Pie,
@@ -96,6 +98,14 @@ const CoupleFinancialPlanner: React.FC = () => {
     )}`;
   });
 
+  // --- ESTADOS DE AUTENTICAÇÃO ---
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+
   // --- ESTADOS DE DADOS (COM LOCALSTORAGE) ---
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>(
     () => {
@@ -182,6 +192,54 @@ const CoupleFinancialPlanner: React.FC = () => {
     localStorage.setItem('goals', JSON.stringify(goals));
     localStorage.setItem('customCategories', JSON.stringify(customCategories));
   }, [transactions, budgetItems, goals, customCategories]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (isMounted) {
+        if (error) {
+          setAuthError('Não foi possível verificar a sessão.');
+        }
+        setSession(data.session);
+        setAuthLoading(false);
+      }
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (isMounted) {
+        setSession(nextSession);
+        setAuthLoading(false);
+      }
+    });
+
+    loadSession();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthSubmitting(true);
+    setAuthError(null);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authEmail.trim(),
+      password: authPassword,
+    });
+
+    if (error) {
+      setAuthError('E-mail ou senha inválidos. Verifique e tente novamente.');
+    }
+
+    setAuthSubmitting(false);
+  };
 
   // --- FUNÇÕES AUXILIARES ---
   const formatCurrency = (value: number | string): string => {
@@ -668,6 +726,78 @@ const CoupleFinancialPlanner: React.FC = () => {
 
     return bills;
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-8 py-6">
+          <p className="text-gray-500 font-medium">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 flex items-center justify-center p-4 text-gray-800">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-rose-100 rounded-xl">
+              <Heart className="text-rose-500" size={28} fill="currentColor" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">Bem-vindo de volta</h1>
+              <p className="text-sm text-gray-500">
+                Entre para acessar seu planner
+              </p>
+            </div>
+          </div>
+
+          {authError && (
+            <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {authError}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-4 text-left">
+            <div>
+              <label className="text-xs text-gray-600 font-bold ml-1 block mb-1">
+                E-mail
+              </label>
+              <input
+                type="email"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50"
+                placeholder="voce@email.com"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 font-bold ml-1 block mb-1">
+                Senha
+              </label>
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50"
+                placeholder="Sua senha"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={authSubmitting}
+              className="w-full py-3 rounded-xl font-semibold text-white shadow-md transition-all bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-95 disabled:opacity-70"
+            >
+              {authSubmitting ? 'Entrando...' : 'Entrar'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 p-4 font-sans text-gray-800">
