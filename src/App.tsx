@@ -36,16 +36,14 @@ import {
 
 // --- INTERFACES ---
 interface Transaction {
-  id: string;
+  id: number;
   date: string;
   description: string;
   category: string;
   amount: number;
-  type:
-    | 'despesa-fixa'
-    | 'despesa-variável'
-    | 'receita-fixa'
-    | 'receita-variável';
+  type: 'despesa' | 'receita';
+  tipoMovimentacaoId: number;
+  categoriaFinanceiraId: number;
 }
 
 interface BudgetItem {
@@ -80,6 +78,18 @@ interface CustomCategory {
   id: string;
   name: string;
   type: 'despesa' | 'receita';
+}
+
+interface TipoMovimentacaoOption {
+  id: number;
+  descricao: string;
+  tipo: 'despesa' | 'receita';
+}
+
+interface CategoriaFinanceiraOption {
+  id: number;
+  descricao: string | null;
+  tipo: 'despesa' | 'receita';
 }
 
 // --- COMPONENTE PRINCIPAL ---
@@ -117,10 +127,7 @@ const CoupleFinancialPlanner: React.FC = () => {
     }
   );
 
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('transactions');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>(() => {
     const saved = localStorage.getItem('budgetItems');
@@ -137,9 +144,9 @@ const CoupleFinancialPlanner: React.FC = () => {
   const [newTransaction, setNewTransaction] = useState({
     date: '',
     description: '',
-    category: '',
     amount: '',
-    type: 'despesa-fixa' as const,
+    tipoMovimentacaoId: '',
+    categoriaFinanceiraId: '',
   });
 
   // Orçamento
@@ -190,11 +197,10 @@ const CoupleFinancialPlanner: React.FC = () => {
 
   // --- EFEITOS (SALVAR) ---
   useEffect(() => {
-    localStorage.setItem('transactions', JSON.stringify(transactions));
     localStorage.setItem('budgetItems', JSON.stringify(budgetItems));
     localStorage.setItem('goals', JSON.stringify(goals));
     localStorage.setItem('customCategories', JSON.stringify(customCategories));
-  }, [transactions, budgetItems, goals, customCategories]);
+  }, [budgetItems, goals, customCategories]);
 
   useEffect(() => {
     let isMounted = true;
@@ -226,6 +232,101 @@ const CoupleFinancialPlanner: React.FC = () => {
       subscription.unsubscribe();
     };
   }, []);
+
+  const [tipoMovimentacoes, setTipoMovimentacoes] = useState<
+    TipoMovimentacaoOption[]
+  >([]);
+  const [categoriasFinanceiras, setCategoriasFinanceiras] = useState<
+    CategoriaFinanceiraOption[]
+  >([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [transactionsError, setTransactionsError] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    const loadTransactionData = async () => {
+      if (!session?.user) {
+        return;
+      }
+
+      setTransactionsLoading(true);
+      setTransactionsError(null);
+
+      const [tiposResult, categoriasResult, lancamentosResult] =
+        await Promise.all([
+          supabase
+            .from('tipo_movimentacao')
+            .select('id, descricao, tipo')
+            .order('descricao', { ascending: true }),
+          supabase
+            .from('categoria_financeira')
+            .select('id, descricao, tipo')
+            .order('descricao', { ascending: true }),
+          supabase
+            .from('lancamentos')
+            .select(
+              `id,
+              data_lancamento,
+              descricao,
+              valor,
+              categoria_financeira:categoria_financeira_id ( id, descricao, tipo ),
+              tipo_movimentacao:tipo_movimentacao_id ( id, descricao, tipo )`
+            )
+            .order('data_lancamento', { ascending: true }),
+        ]);
+
+      if (tiposResult.error) {
+        setTransactionsError(
+          'Não foi possível carregar os tipos de movimentação.'
+        );
+      } else {
+        setTipoMovimentacoes(tiposResult.data ?? []);
+      }
+
+      if (categoriasResult.error) {
+        setTransactionsError(
+          'Não foi possível carregar as categorias financeiras.'
+        );
+      } else {
+        setCategoriasFinanceiras(categoriasResult.data ?? []);
+      }
+
+      if (lancamentosResult.error) {
+        setTransactionsError('Não foi possível carregar os lançamentos.');
+      } else {
+        const mapped = (lancamentosResult.data ?? []).map((item) => {
+          const categoria = item.categoria_financeira as {
+            id: number;
+            descricao: string | null;
+            tipo: 'despesa' | 'receita';
+          } | null;
+          const tipoMovimentacao = item.tipo_movimentacao as {
+            id: number;
+            descricao: string;
+            tipo: 'despesa' | 'receita';
+          } | null;
+
+          return {
+            id: item.id,
+            date: item.data_lancamento,
+            description: item.descricao ?? '',
+            category: categoria?.descricao ?? 'Sem categoria',
+            amount: item.valor,
+            type: tipoMovimentacao?.tipo ?? 'despesa',
+            tipoMovimentacaoId: tipoMovimentacao?.id ?? 0,
+            categoriaFinanceiraId: categoria?.id ?? 0,
+          };
+        });
+
+        setTransactions(mapped);
+      }
+
+      setTransactionsLoading(false);
+    };
+
+    loadTransactionData();
+  }, [session?.user]);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -489,29 +590,111 @@ const CoupleFinancialPlanner: React.FC = () => {
     }
   };
 
-  const addTransaction = () => {
-    if (newTransaction.description && newTransaction.amount) {
-      // Se não tiver data, usa o primeiro dia do mês selecionado
-      const transactionDate = newTransaction.date || `${selectedMonth}-01`;
-      setTransactions([
-        ...transactions,
-        {
-          id: Date.now().toString(),
-          ...newTransaction,
-          date: transactionDate,
-          amount: parseCurrency(newTransaction.amount),
-        },
-      ]);
-      setNewTransaction({
-        ...newTransaction,
-        description: '',
-        amount: '',
-        date: '',
-      });
+  const addTransaction = async () => {
+    if (!session?.user) {
+      setTransactionsError('Sua sessão expirou. Faça login novamente.');
+      return;
     }
+
+    if (
+      !newTransaction.description ||
+      !newTransaction.amount ||
+      !newTransaction.tipoMovimentacaoId ||
+      !newTransaction.categoriaFinanceiraId
+    ) {
+      setTransactionsError('Preencha todos os campos do lançamento.');
+      return;
+    }
+
+    setTransactionsError(null);
+
+    const transactionDate = newTransaction.date || `${selectedMonth}-01`;
+    const tipoMovimentacaoId = Number(newTransaction.tipoMovimentacaoId);
+    const categoriaFinanceiraId = Number(newTransaction.categoriaFinanceiraId);
+
+    const { data, error } = await supabase
+      .from('lancamentos')
+      .insert({
+        data_lancamento: transactionDate,
+        descricao: newTransaction.description,
+        valor: parseCurrency(newTransaction.amount),
+        tipo_movimentacao_id: tipoMovimentacaoId,
+        categoria_financeira_id: categoriaFinanceiraId,
+        user_id: session.user.id,
+      })
+      .select(
+        `id,
+        data_lancamento,
+        descricao,
+        valor,
+        categoria_financeira:categoria_financeira_id ( id, descricao, tipo ),
+        tipo_movimentacao:tipo_movimentacao_id ( id, descricao, tipo )`
+      )
+      .single();
+
+    if (error || !data) {
+      setTransactionsError('Não foi possível salvar o lançamento.');
+      return;
+    }
+
+    const categoria = data.categoria_financeira as {
+      id: number;
+      descricao: string | null;
+      tipo: 'despesa' | 'receita';
+    } | null;
+    const tipoMovimentacao = data.tipo_movimentacao as {
+      id: number;
+      descricao: string;
+      tipo: 'despesa' | 'receita';
+    } | null;
+
+    setTransactions([
+      ...transactions,
+      {
+        id: data.id,
+        date: data.data_lancamento,
+        description: data.descricao ?? '',
+        category: categoria?.descricao ?? 'Sem categoria',
+        amount: data.valor,
+        type: tipoMovimentacao?.tipo ?? 'despesa',
+        tipoMovimentacaoId: tipoMovimentacao?.id ?? 0,
+        categoriaFinanceiraId: categoria?.id ?? 0,
+      },
+    ]);
+
+    setNewTransaction({
+      date: '',
+      description: '',
+      amount: '',
+      tipoMovimentacaoId: '',
+      categoriaFinanceiraId: '',
+    });
   };
-  const deleteTransaction = (id: string) =>
+
+  const deleteTransaction = async (id: number) => {
+    setTransactionsError(null);
+    const { error } = await supabase.from('lancamentos').delete().eq('id', id);
+
+    if (error) {
+      setTransactionsError('Não foi possível excluir o lançamento.');
+      return;
+    }
+
     setTransactions(transactions.filter((t) => t.id !== id));
+  };
+
+  const getTipoMovimentacaoBase = (id: string) => {
+    const match = tipoMovimentacoes.find((item) => item.id === Number(id));
+    return match?.tipo;
+  };
+
+  const getCategoriasFinanceiras = (tipo?: 'despesa' | 'receita') => {
+    if (!tipo) {
+      return categoriasFinanceiras;
+    }
+
+    return categoriasFinanceiras.filter((cat) => cat.tipo === tipo);
+  };
 
   const saveBudgetItem = () => {
     if (newBudgetItem.description && newBudgetItem.estimatedAmount) {
@@ -1667,6 +1850,11 @@ const CoupleFinancialPlanner: React.FC = () => {
               <h2 className="text-xl font-bold text-gray-800 mb-6">
                 Novo Lançamento
               </h2>
+              {transactionsError && (
+                <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {transactionsError}
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <input
                   type="date"
@@ -1704,33 +1892,38 @@ const CoupleFinancialPlanner: React.FC = () => {
                 />
                 <select
                   className="p-3 border rounded-xl bg-gray-50"
-                  value={newTransaction.type}
+                  value={newTransaction.tipoMovimentacaoId}
                   onChange={(e) =>
                     setNewTransaction({
                       ...newTransaction,
-                      type: e.target.value as any,
+                      tipoMovimentacaoId: e.target.value,
+                      categoriaFinanceiraId: '',
                     })
                   }
                 >
-                  <option value="despesa-fixa">Despesa Fixa</option>
-                  <option value="despesa-variável">Despesa Variável</option>
-                  <option value="receita-fixa">Receita Fixa</option>
-                  <option value="receita-variável">Receita Variável</option>
+                  <option value="">Selecione o tipo</option>
+                  {tipoMovimentacoes.map((tipo) => (
+                    <option key={tipo.id} value={tipo.id}>
+                      {tipo.descricao}
+                    </option>
+                  ))}
                 </select>
                 <select
                   className="p-3 border rounded-xl bg-gray-50 lg:col-span-3"
-                  value={newTransaction.category}
+                  value={newTransaction.categoriaFinanceiraId}
                   onChange={(e) =>
                     setNewTransaction({
                       ...newTransaction,
-                      category: e.target.value,
+                      categoriaFinanceiraId: e.target.value,
                     })
                   }
                 >
                   <option value="">Selecione Categoria</option>
-                  {getAllCategories(newTransaction.type).map((c) => (
-                    <option key={c} value={c}>
-                      {c}
+                  {getCategoriasFinanceiras(
+                    getTipoMovimentacaoBase(newTransaction.tipoMovimentacaoId)
+                  ).map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.descricao ?? 'Sem categoria'}
                     </option>
                   ))}
                 </select>
@@ -1756,42 +1949,49 @@ const CoupleFinancialPlanner: React.FC = () => {
                   </h3>
                 </div>
                 <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                  {filteredTransactions
-                    .filter((t) => t.type.includes('receita'))
-                    .slice()
-                    .reverse()
-                    .map((t) => (
-                      <div
-                        key={t.id}
-                        className="flex justify-between items-center p-4 border border-gray-100 rounded-xl hover:bg-green-50 transition-colors group"
-                      >
-                        <div className="flex-1">
-                          <p className="font-bold text-gray-800">
-                            {t.description}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded mr-2">
-                              {t.category}
+                  {transactionsLoading ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                      <p className="font-medium">Carregando lançamentos...</p>
+                    </div>
+                  ) : (
+                    filteredTransactions
+                      .filter((t) => t.type.includes('receita'))
+                      .slice()
+                      .reverse()
+                      .map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex justify-between items-center p-4 border border-gray-100 rounded-xl hover:bg-green-50 transition-colors group"
+                        >
+                          <div className="flex-1">
+                            <p className="font-bold text-gray-800">
+                              {t.description}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded mr-2">
+                                {t.category}
+                              </span>
+                              {new Date(t.date).toLocaleDateString('pt-BR')}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-green-600 text-lg">
+                              + R$ {formatCurrency(t.amount)}
                             </span>
-                            {new Date(t.date).toLocaleDateString('pt-BR')}
-                          </p>
+                            <button
+                              onClick={() => deleteTransaction(t.id)}
+                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold text-green-600 text-lg">
-                            + R$ {formatCurrency(t.amount)}
-                          </span>
-                          <button
-                            onClick={() => deleteTransaction(t.id)}
-                            className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  {filteredTransactions.filter((t) =>
-                    t.type.includes('receita')
-                  ).length === 0 && (
+                      ))
+                  )}
+                  {!transactionsLoading &&
+                    filteredTransactions.filter((t) =>
+                      t.type.includes('receita')
+                    ).length === 0 && (
                     <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                       <TrendingUp size={48} className="mb-3 opacity-20" />
                       <p className="font-medium">
@@ -1816,42 +2016,49 @@ const CoupleFinancialPlanner: React.FC = () => {
                   </h3>
                 </div>
                 <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                  {filteredTransactions
-                    .filter((t) => t.type.includes('despesa'))
-                    .slice()
-                    .reverse()
-                    .map((t) => (
-                      <div
-                        key={t.id}
-                        className="flex justify-between items-center p-4 border border-gray-100 rounded-xl hover:bg-red-50 transition-colors group"
-                      >
-                        <div className="flex-1">
-                          <p className="font-bold text-gray-800">
-                            {t.description}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded mr-2">
-                              {t.category}
+                  {transactionsLoading ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                      <p className="font-medium">Carregando lançamentos...</p>
+                    </div>
+                  ) : (
+                    filteredTransactions
+                      .filter((t) => t.type.includes('despesa'))
+                      .slice()
+                      .reverse()
+                      .map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex justify-between items-center p-4 border border-gray-100 rounded-xl hover:bg-red-50 transition-colors group"
+                        >
+                          <div className="flex-1">
+                            <p className="font-bold text-gray-800">
+                              {t.description}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded mr-2">
+                                {t.category}
+                              </span>
+                              {new Date(t.date).toLocaleDateString('pt-BR')}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-red-600 text-lg">
+                              - R$ {formatCurrency(t.amount)}
                             </span>
-                            {new Date(t.date).toLocaleDateString('pt-BR')}
-                          </p>
+                            <button
+                              onClick={() => deleteTransaction(t.id)}
+                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold text-red-600 text-lg">
-                            - R$ {formatCurrency(t.amount)}
-                          </span>
-                          <button
-                            onClick={() => deleteTransaction(t.id)}
-                            className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  {filteredTransactions.filter((t) =>
-                    t.type.includes('despesa')
-                  ).length === 0 && (
+                      ))
+                  )}
+                  {!transactionsLoading &&
+                    filteredTransactions.filter((t) =>
+                      t.type.includes('despesa')
+                    ).length === 0 && (
                     <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                       <TrendingDown size={48} className="mb-3 opacity-20" />
                       <p className="font-medium">
