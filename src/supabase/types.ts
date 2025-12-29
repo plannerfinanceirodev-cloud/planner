@@ -117,8 +117,13 @@ export type Database = {
         Row: {
           categoria_financeira_id: number | null
           created_at: string
+          data_vencimento: string | null
           descricao: string
           id: number
+          is_pago: boolean
+          parcela_atual: number | null
+          parcelamento_id: string | null
+          parcelas_total: number | null
           tipo_movimentacao_id: number | null
           user_id: string
           valor: number
@@ -126,8 +131,13 @@ export type Database = {
         Insert: {
           categoria_financeira_id?: number | null
           created_at?: string
+          data_vencimento?: string | null
           descricao: string
           id?: number
+          is_pago?: boolean
+          parcela_atual?: number | null
+          parcelamento_id?: string | null
+          parcelas_total?: number | null
           tipo_movimentacao_id?: number | null
           user_id: string
           valor: number
@@ -135,8 +145,13 @@ export type Database = {
         Update: {
           categoria_financeira_id?: number | null
           created_at?: string
+          data_vencimento?: string | null
           descricao?: string
           id?: number
+          is_pago?: boolean
+          parcela_atual?: number | null
+          parcelamento_id?: string | null
+          parcelas_total?: number | null
           tipo_movimentacao_id?: number | null
           user_id?: string
           valor?: number
