@@ -20,18 +20,21 @@ export type Database = {
           descricao: string | null
           id: number
           tipo: Database["public"]["Enums"]["TipoMovimentacao"]
+          user_id: string | null
         }
         Insert: {
           created_at?: string
           descricao?: string | null
           id?: number
           tipo?: Database["public"]["Enums"]["TipoMovimentacao"]
+          user_id?: string | null
         }
         Update: {
           created_at?: string
           descricao?: string | null
           id?: number
           tipo?: Database["public"]["Enums"]["TipoMovimentacao"]
+          user_id?: string | null
         }
         Relationships: []
       }
