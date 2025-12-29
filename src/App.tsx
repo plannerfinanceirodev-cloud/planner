@@ -47,15 +47,11 @@ interface Transaction {
 }
 
 interface BudgetItem {
-  id: string;
+  id: number;
   description: string;
   category: string;
   estimatedAmount: number;
-  type:
-    | 'despesa-fixa'
-    | 'despesa-variável'
-    | 'receita-fixa'
-    | 'receita-variável';
+  type: 'despesa' | 'receita';
   dueDate?: string;
   isPaid?: boolean;
   installments?: {
@@ -63,6 +59,8 @@ interface BudgetItem {
     current: number;
     parentId?: string;
   };
+  tipoMovimentacaoId: number;
+  categoriaFinanceiraId: number;
 }
 
 interface Goal {
@@ -129,10 +127,7 @@ const CoupleFinancialPlanner: React.FC = () => {
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  const [budgetItems, setBudgetItems] = useState<BudgetItem[]>(() => {
-    const saved = localStorage.getItem('budgetItems');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
 
   const [goals, setGoals] = useState<Goal[]>(() => {
     const saved = localStorage.getItem('goals');
@@ -150,12 +145,12 @@ const CoupleFinancialPlanner: React.FC = () => {
   });
 
   // Orçamento
-  const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
+  const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
   const [newBudgetItem, setNewBudgetItem] = useState({
     description: '',
-    category: '',
     estimatedAmount: '',
-    type: 'despesa-fixa' as const,
+    tipoMovimentacaoId: '',
+    categoriaFinanceiraId: '',
     dueDate: '',
     installments: '',
   });
@@ -197,10 +192,9 @@ const CoupleFinancialPlanner: React.FC = () => {
 
   // --- EFEITOS (SALVAR) ---
   useEffect(() => {
-    localStorage.setItem('budgetItems', JSON.stringify(budgetItems));
     localStorage.setItem('goals', JSON.stringify(goals));
     localStorage.setItem('customCategories', JSON.stringify(customCategories));
-  }, [budgetItems, goals, customCategories]);
+  }, [goals, customCategories]);
 
   useEffect(() => {
     let isMounted = true;
@@ -243,6 +237,8 @@ const CoupleFinancialPlanner: React.FC = () => {
   const [transactionsError, setTransactionsError] = useState<string | null>(
     null
   );
+  const [budgetLoading, setBudgetLoading] = useState(false);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadTransactionData = async () => {
@@ -326,6 +322,44 @@ const CoupleFinancialPlanner: React.FC = () => {
     };
 
     loadTransactionData();
+  }, [session?.user]);
+
+  useEffect(() => {
+    const loadBudgetData = async () => {
+      if (!session?.user) {
+        return;
+      }
+
+      setBudgetLoading(true);
+      setBudgetError(null);
+
+      const { data, error } = await supabase
+        .from('orcamentos')
+        .select(
+          `id,
+          descricao,
+          valor,
+          data_vencimento,
+          is_pago,
+          parcelas_total,
+          parcela_atual,
+          parcelamento_id,
+          categoria_financeira:categoria_financeira_id ( id, descricao, tipo ),
+          tipo_movimentacao:tipo_movimentacao_id ( id, descricao, tipo )`
+        )
+        .order('data_vencimento', { ascending: true });
+
+      if (error) {
+        setBudgetError('Não foi possível carregar o orçamento.');
+        setBudgetLoading(false);
+        return;
+      }
+
+      setBudgetItems((data ?? []).map(mapBudgetRow));
+      setBudgetLoading(false);
+    };
+
+    loadBudgetData();
   }, [session?.user]);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -696,102 +730,259 @@ const CoupleFinancialPlanner: React.FC = () => {
     return categoriasFinanceiras.filter((cat) => cat.tipo === tipo);
   };
 
-  const saveBudgetItem = () => {
-    if (newBudgetItem.description && newBudgetItem.estimatedAmount) {
-      const amount =
-        typeof newBudgetItem.estimatedAmount === 'string'
-          ? parseCurrency(newBudgetItem.estimatedAmount)
-          : newBudgetItem.estimatedAmount;
-      const installmentsCount =
-        newBudgetItem.installments && newBudgetItem.installments.trim() !== ''
-          ? parseInt(newBudgetItem.installments)
-          : 0;
-
-      // Se não tem data de vencimento, usar o último dia do mês selecionado
-      let defaultDueDate = newBudgetItem.dueDate;
-      if (!defaultDueDate) {
-        const [year, month] = selectedMonth.split('-').map(Number);
-        const lastDay = new Date(year, month, 0).getDate();
-        defaultDueDate = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
-      }
-
-      if (editingBudgetId) {
-        setBudgetItems(
-          budgetItems.map((item) =>
-            item.id === editingBudgetId
-              ? { ...item, ...newBudgetItem, estimatedAmount: amount }
-              : item
-          )
-        );
-        setEditingBudgetId(null);
-      } else {
-        // Se tem parcelamento válido (maior que 1) e tem data de vencimento, criar múltiplas entradas
-        if (installmentsCount > 1) {
-          const newItems: BudgetItem[] = [];
-          const parentId = Date.now().toString();
-          const installmentAmount = amount / installmentsCount;
-
-          for (let i = 0; i < installmentsCount; i++) {
-            const dueDate = new Date(defaultDueDate);
-            dueDate.setMonth(dueDate.getMonth() + i);
-
-            newItems.push({
-              id: `${parentId}-${i}`,
-              description: newBudgetItem.description,
-              category: newBudgetItem.category,
-              estimatedAmount: installmentAmount,
-              type: newBudgetItem.type,
-              dueDate: dueDate.toISOString().split('T')[0],
-              installments: {
-                total: installmentsCount,
-                current: i + 1,
-                parentId: parentId,
-              },
-            });
+  const mapBudgetRow = (item: {
+    id: number;
+    descricao: string;
+    valor: number;
+    data_vencimento: string | null;
+    is_pago: boolean;
+    parcelas_total: number | null;
+    parcela_atual: number | null;
+    parcelamento_id: string | null;
+    categoria_financeira: {
+      id: number;
+      descricao: string | null;
+      tipo: 'despesa' | 'receita';
+    } | null;
+    tipo_movimentacao: {
+      id: number;
+      descricao: string;
+      tipo: 'despesa' | 'receita';
+    } | null;
+  }): BudgetItem => {
+    const installments =
+      item.parcelas_total && item.parcela_atual
+        ? {
+            total: item.parcelas_total,
+            current: item.parcela_atual,
+            parentId: item.parcelamento_id ?? undefined,
           }
+        : undefined;
 
-          setBudgetItems([...budgetItems, ...newItems]);
-        } else {
-          // Sem parcelamento ou parcela única, adicionar normalmente
-          const newItem: BudgetItem = {
-            id: Date.now().toString(),
-            description: newBudgetItem.description,
-            category: newBudgetItem.category,
-            estimatedAmount: amount,
-            type: newBudgetItem.type,
-            dueDate: defaultDueDate,
-          };
-          setBudgetItems([...budgetItems, newItem]);
-        }
-      }
-      setNewBudgetItem({
-        description: '',
-        category: '',
-        estimatedAmount: '',
-        type: 'despesa-fixa',
-        dueDate: '',
-        installments: '',
-      });
+    return {
+      id: item.id,
+      description: item.descricao,
+      category: item.categoria_financeira?.descricao ?? 'Sem categoria',
+      estimatedAmount: item.valor,
+      type: item.tipo_movimentacao?.tipo ?? 'despesa',
+      dueDate: item.data_vencimento ?? undefined,
+      isPaid: item.is_pago,
+      installments,
+      tipoMovimentacaoId: item.tipo_movimentacao?.id ?? 0,
+      categoriaFinanceiraId: item.categoria_financeira?.id ?? 0,
+    };
+  };
+
+  const saveBudgetItem = async () => {
+    if (!session?.user) {
+      setBudgetError('Sua sessão expirou. Faça login novamente.');
+      return;
     }
+
+    if (
+      !newBudgetItem.description ||
+      !newBudgetItem.estimatedAmount ||
+      !newBudgetItem.tipoMovimentacaoId ||
+      !newBudgetItem.categoriaFinanceiraId
+    ) {
+      setBudgetError('Preencha todos os campos do orçamento.');
+      return;
+    }
+
+    setBudgetError(null);
+
+    const amount =
+      typeof newBudgetItem.estimatedAmount === 'string'
+        ? parseCurrency(newBudgetItem.estimatedAmount)
+        : newBudgetItem.estimatedAmount;
+    const installmentsCount =
+      newBudgetItem.installments && newBudgetItem.installments.trim() !== ''
+        ? parseInt(newBudgetItem.installments)
+        : 0;
+
+    let defaultDueDate = newBudgetItem.dueDate;
+    if (!defaultDueDate) {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const lastDay = new Date(year, month, 0).getDate();
+      defaultDueDate = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+    }
+
+    const tipoMovimentacaoId = Number(newBudgetItem.tipoMovimentacaoId);
+    const categoriaFinanceiraId = Number(newBudgetItem.categoriaFinanceiraId);
+
+    if (editingBudgetId) {
+      const { data, error } = await supabase
+        .from('orcamentos')
+        .update({
+          descricao: newBudgetItem.description,
+          valor: amount,
+          data_vencimento: defaultDueDate,
+          tipo_movimentacao_id: tipoMovimentacaoId,
+          categoria_financeira_id: categoriaFinanceiraId,
+        })
+        .eq('id', editingBudgetId)
+        .select(
+          `id,
+          descricao,
+          valor,
+          data_vencimento,
+          is_pago,
+          parcelas_total,
+          parcela_atual,
+          parcelamento_id,
+          categoria_financeira:categoria_financeira_id ( id, descricao, tipo ),
+          tipo_movimentacao:tipo_movimentacao_id ( id, descricao, tipo )`
+        )
+        .single();
+
+      if (error || !data) {
+        setBudgetError('Não foi possível atualizar o orçamento.');
+        return;
+      }
+
+      const mapped = mapBudgetRow(data);
+      setBudgetItems(
+        budgetItems.map((item) => (item.id === mapped.id ? mapped : item))
+      );
+      setEditingBudgetId(null);
+    } else if (installmentsCount > 1) {
+      const parentId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}`;
+      const installmentAmount = amount / installmentsCount;
+      const rows = Array.from({ length: installmentsCount }, (_, index) => {
+        const dueDate = new Date(defaultDueDate);
+        dueDate.setMonth(dueDate.getMonth() + index);
+
+        return {
+          descricao: newBudgetItem.description,
+          valor: installmentAmount,
+          data_vencimento: dueDate.toISOString().split('T')[0],
+          tipo_movimentacao_id: tipoMovimentacaoId,
+          categoria_financeira_id: categoriaFinanceiraId,
+          parcelas_total: installmentsCount,
+          parcela_atual: index + 1,
+          parcelamento_id: parentId,
+          is_pago: false,
+          user_id: session.user.id,
+        };
+      });
+
+      const { data, error } = await supabase
+        .from('orcamentos')
+        .insert(rows)
+        .select(
+          `id,
+          descricao,
+          valor,
+          data_vencimento,
+          is_pago,
+          parcelas_total,
+          parcela_atual,
+          parcelamento_id,
+          categoria_financeira:categoria_financeira_id ( id, descricao, tipo ),
+          tipo_movimentacao:tipo_movimentacao_id ( id, descricao, tipo )`
+        );
+
+      if (error || !data) {
+        setBudgetError('Não foi possível salvar o orçamento.');
+        return;
+      }
+
+      setBudgetItems([...budgetItems, ...data.map(mapBudgetRow)]);
+    } else {
+      const { data, error } = await supabase
+        .from('orcamentos')
+        .insert({
+          descricao: newBudgetItem.description,
+          valor: amount,
+          data_vencimento: defaultDueDate,
+          tipo_movimentacao_id: tipoMovimentacaoId,
+          categoria_financeira_id: categoriaFinanceiraId,
+          is_pago: false,
+          user_id: session.user.id,
+        })
+        .select(
+          `id,
+          descricao,
+          valor,
+          data_vencimento,
+          is_pago,
+          parcelas_total,
+          parcela_atual,
+          parcelamento_id,
+          categoria_financeira:categoria_financeira_id ( id, descricao, tipo ),
+          tipo_movimentacao:tipo_movimentacao_id ( id, descricao, tipo )`
+        )
+        .single();
+
+      if (error || !data) {
+        setBudgetError('Não foi possível salvar o orçamento.');
+        return;
+      }
+
+      setBudgetItems([...budgetItems, mapBudgetRow(data)]);
+    }
+
+    setNewBudgetItem({
+      description: '',
+      estimatedAmount: '',
+      tipoMovimentacaoId: '',
+      categoriaFinanceiraId: '',
+      dueDate: '',
+      installments: '',
+    });
   };
   const startEditingBudget = (item: BudgetItem) => {
     setNewBudgetItem({
       description: item.description,
-      category: item.category,
       estimatedAmount: item.estimatedAmount.toString(),
-      type: item.type,
+      tipoMovimentacaoId: item.tipoMovimentacaoId
+        ? item.tipoMovimentacaoId.toString()
+        : '',
+      categoriaFinanceiraId: item.categoriaFinanceiraId
+        ? item.categoriaFinanceiraId.toString()
+        : '',
       dueDate: item.dueDate || '',
+      installments: '',
     });
     setEditingBudgetId(item.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  const deleteBudgetItem = (id: string) =>
-    setBudgetItems(budgetItems.filter((i) => i.id !== id));
+  const deleteBudgetItem = async (id: number) => {
+    setBudgetError(null);
+    const { error } = await supabase.from('orcamentos').delete().eq('id', id);
 
-  const toggleBudgetItemPaid = (id: string) => {
+    if (error) {
+      setBudgetError('Não foi possível excluir o item do orçamento.');
+      return;
+    }
+
+    setBudgetItems(budgetItems.filter((i) => i.id !== id));
+  };
+
+  const toggleBudgetItemPaid = async (id: number) => {
+    setBudgetError(null);
+    const item = budgetItems.find((budget) => budget.id === id);
+    if (!item) {
+      return;
+    }
+
+    const nextValue = !item.isPaid;
+    const { error } = await supabase
+      .from('orcamentos')
+      .update({ is_pago: nextValue })
+      .eq('id', id);
+
+    if (error) {
+      setBudgetError('Não foi possível atualizar o status do orçamento.');
+      return;
+    }
+
     setBudgetItems(
-      budgetItems.map((item) =>
-        item.id === id ? { ...item, isPaid: !item.isPaid } : item
+      budgetItems.map((budget) =>
+        budget.id === id ? { ...budget, isPaid: nextValue } : budget
       )
     );
   };
@@ -846,7 +1037,7 @@ const CoupleFinancialPlanner: React.FC = () => {
   // Pegar todas as despesas com data (tanto de lançamentos quanto de orçamento)
   const getAllBills = () => {
     const bills: Array<{
-      id: string;
+      id: number | string;
       description: string;
       amount: number;
       date: string;
@@ -1469,6 +1660,12 @@ const CoupleFinancialPlanner: React.FC = () => {
                 </button>
               </div>
 
+              {budgetError && (
+                <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {budgetError}
+                </div>
+              )}
+
               {showCategoryForm && (
                 <div className="mb-6 bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex flex-col md:flex-row gap-3 items-end">
                   <div className="w-full">
@@ -1538,18 +1735,21 @@ const CoupleFinancialPlanner: React.FC = () => {
                   </label>
                   <select
                     className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50"
-                    value={newBudgetItem.type}
+                    value={newBudgetItem.tipoMovimentacaoId}
                     onChange={(e) =>
                       setNewBudgetItem({
                         ...newBudgetItem,
-                        type: e.target.value as any,
+                        tipoMovimentacaoId: e.target.value,
+                        categoriaFinanceiraId: '',
                       })
                     }
                   >
-                    <option value="receita-fixa">Receita Fixa</option>
-                    <option value="receita-variável">Receita Variável</option>
-                    <option value="despesa-fixa">Despesa Fixa</option>
-                    <option value="despesa-variável">Despesa Variável</option>
+                    <option value="">Selecione...</option>
+                    {tipoMovimentacoes.map((tipo) => (
+                      <option key={tipo.id} value={tipo.id}>
+                        {tipo.descricao}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -1558,18 +1758,20 @@ const CoupleFinancialPlanner: React.FC = () => {
                   </label>
                   <select
                     className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50"
-                    value={newBudgetItem.category}
+                    value={newBudgetItem.categoriaFinanceiraId}
                     onChange={(e) =>
                       setNewBudgetItem({
                         ...newBudgetItem,
-                        category: e.target.value,
+                        categoriaFinanceiraId: e.target.value,
                       })
                     }
                   >
                     <option value="">Selecione...</option>
-                    {getAllCategories(newBudgetItem.type).map((c) => (
-                      <option key={c} value={c}>
-                        {c}
+                    {getCategoriasFinanceiras(
+                      getTipoMovimentacaoBase(newBudgetItem.tipoMovimentacaoId)
+                    ).map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.descricao ?? 'Sem categoria'}
                       </option>
                     ))}
                   </select>
@@ -1668,58 +1870,74 @@ const CoupleFinancialPlanner: React.FC = () => {
                   </h3>
                 </div>
                 <div className="space-y-3">
-                  {filteredBudgetItems
-                    .filter((i) => i.type.startsWith('receita'))
-                    .map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex justify-between items-center p-3 border border-gray-100 rounded-xl hover:bg-green-50 group"
-                      >
-                        <div className="flex-1">
-                          <p className="font-bold text-gray-800">
-                            {item.description}
-                            {item.installments && (
-                              <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded font-bold">
-                                {item.installments.current}/
-                                {item.installments.total}x
-                              </span>
-                            )}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <p className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                              {item.category}
+                  {budgetLoading ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                      <p className="font-medium">Carregando orçamento...</p>
+                    </div>
+                  ) : (
+                    filteredBudgetItems
+                      .filter((i) => i.type.startsWith('receita'))
+                      .map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex justify-between items-center p-3 border border-gray-100 rounded-xl hover:bg-green-50 group"
+                        >
+                          <div className="flex-1">
+                            <p className="font-bold text-gray-800">
+                              {item.description}
+                              {item.installments && (
+                                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded font-bold">
+                                  {item.installments.current}/
+                                  {item.installments.total}x
+                                </span>
+                              )}
                             </p>
-                            {item.dueDate && (
-                              <p className="text-xs text-gray-500 bg-green-100 px-2 py-0.5 rounded flex items-center gap-1">
-                                <Calendar size={10} />
-                                {new Date(item.dueDate).toLocaleDateString(
-                                  'pt-BR'
-                                )}
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                {item.category}
                               </p>
-                            )}
+                              {item.dueDate && (
+                                <p className="text-xs text-gray-500 bg-green-100 px-2 py-0.5 rounded flex items-center gap-1">
+                                  <Calendar size={10} />
+                                  {new Date(item.dueDate).toLocaleDateString(
+                                    'pt-BR'
+                                  )}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-green-600">
+                              R$ {formatCurrency(item.estimatedAmount)}
+                            </span>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                              <button
+                                onClick={() => startEditingBudget(item)}
+                                className="text-blue-500"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => deleteBudgetItem(item.id)}
+                                className="text-red-500"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold text-green-600">
-                            R$ {formatCurrency(item.estimatedAmount)}
-                          </span>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                            <button
-                              onClick={() => startEditingBudget(item)}
-                              className="text-blue-500"
-                            >
-                              <Edit2 size={16} />
-                            </button>
-                            <button
-                              onClick={() => deleteBudgetItem(item.id)}
-                              className="text-red-500"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
+                      ))
+                  )}
+                  {!budgetLoading &&
+                    filteredBudgetItems.filter((i) =>
+                      i.type.startsWith('receita')
+                    ).length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                        <p className="font-medium">
+                          Nenhuma receita planejada neste mês
+                        </p>
                       </div>
-                    ))}
+                    )}
                 </div>
               </div>
 
@@ -1733,108 +1951,128 @@ const CoupleFinancialPlanner: React.FC = () => {
                   </h3>
                 </div>
                 <div className="space-y-3">
-                  {filteredBudgetItems
-                    .filter((i) => i.type.startsWith('despesa'))
-                    .map((item) => (
-                      <div
-                        key={item.id}
-                        className={`flex justify-between items-center p-3 border rounded-xl group transition-colors ${
-                          item.isPaid
-                            ? 'bg-green-50 border-green-200'
-                            : 'border-gray-100 hover:bg-red-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 flex-1">
-                          <button
-                            onClick={() => toggleBudgetItemPaid(item.id)}
-                            className={`p-1 rounded-lg transition-colors ${
-                              item.isPaid
-                                ? 'bg-green-500 hover:bg-green-600'
-                                : 'bg-red-500 hover:bg-red-600'
-                            }`}
-                            title={
-                              item.isPaid
-                                ? 'Marcar como não pago'
-                                : 'Marcar como pago'
-                            }
-                          >
-                            <CheckCircle
-                              size={20}
-                              className="text-white"
-                              fill={item.isPaid ? '#10b981' : 'none'}
-                            />
-                          </button>
-                          <div className="flex-1">
-                            <p
-                              className={`font-bold text-gray-800 ${
-                                item.isPaid ? 'line-through text-gray-500' : ''
+                  {budgetLoading ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                      <p className="font-medium">Carregando orçamento...</p>
+                    </div>
+                  ) : (
+                    filteredBudgetItems
+                      .filter((i) => i.type.startsWith('despesa'))
+                      .map((item) => (
+                        <div
+                          key={item.id}
+                          className={`flex justify-between items-center p-3 border rounded-xl group transition-colors ${
+                            item.isPaid
+                              ? 'bg-green-50 border-green-200'
+                              : 'border-gray-100 hover:bg-red-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            <button
+                              onClick={() => toggleBudgetItemPaid(item.id)}
+                              className={`p-1 rounded-lg transition-colors ${
+                                item.isPaid
+                                  ? 'bg-green-500 hover:bg-green-600'
+                                  : 'bg-red-500 hover:bg-red-600'
                               }`}
+                              title={
+                                item.isPaid
+                                  ? 'Marcar como não pago'
+                                  : 'Marcar como pago'
+                              }
                             >
-                              {item.description}
-                              {item.installments && (
-                                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded font-bold">
-                                  {item.installments.current}/
-                                  {item.installments.total}x
-                                </span>
-                              )}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
+                              <CheckCircle
+                                size={20}
+                                className="text-white"
+                                fill={item.isPaid ? '#10b981' : 'none'}
+                              />
+                            </button>
+                            <div className="flex-1">
                               <p
-                                className={`text-xs px-2 py-0.5 rounded ${
+                                className={`font-bold text-gray-800 ${
                                   item.isPaid
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'text-gray-500 bg-gray-100'
+                                    ? 'line-through text-gray-500'
+                                    : ''
                                 }`}
                               >
-                                {item.category}
+                                {item.description}
+                                {item.installments && (
+                                  <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded font-bold">
+                                    {item.installments.current}/
+                                    {item.installments.total}x
+                                  </span>
+                                )}
                               </p>
-                              {item.dueDate && (
+                              <div className="flex items-center gap-2 mt-1">
                                 <p
-                                  className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                                  className={`text-xs px-2 py-0.5 rounded ${
                                     item.isPaid
                                       ? 'bg-green-100 text-green-700'
-                                      : 'text-gray-500 bg-red-100'
+                                      : 'text-gray-500 bg-gray-100'
                                   }`}
                                 >
-                                  <Calendar size={10} />
-                                  {new Date(item.dueDate).toLocaleDateString(
-                                    'pt-BR'
-                                  )}
+                                  {item.category}
                                 </p>
-                              )}
-                              {item.isPaid && (
-                                <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded font-bold">
-                                  PAGO
-                                </span>
-                              )}
+                                {item.dueDate && (
+                                  <p
+                                    className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                                      item.isPaid
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'text-gray-500 bg-red-100'
+                                    }`}
+                                  >
+                                    <Calendar size={10} />
+                                    {new Date(item.dueDate).toLocaleDateString(
+                                      'pt-BR'
+                                    )}
+                                  </p>
+                                )}
+                                {item.isPaid && (
+                                  <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded font-bold">
+                                    PAGO
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`font-bold text-lg ${
+                                item.isPaid
+                                  ? 'text-green-600'
+                                  : 'text-red-600'
+                              }`}
+                            >
+                              R$ {formatCurrency(item.estimatedAmount)}
+                            </span>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                              <button
+                                onClick={() => startEditingBudget(item)}
+                                className="text-blue-500"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={() => deleteBudgetItem(item.id)}
+                                className="text-red-500"
+                              >
+                                <Trash2 size={16} />
+                              </button>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span
-                            className={`font-bold text-lg ${
-                              item.isPaid ? 'text-green-600' : 'text-red-600'
-                            }`}
-                          >
-                            R$ {formatCurrency(item.estimatedAmount)}
-                          </span>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                            <button
-                              onClick={() => startEditingBudget(item)}
-                              className="text-blue-500"
-                            >
-                              <Edit2 size={16} />
-                            </button>
-                            <button
-                              onClick={() => deleteBudgetItem(item.id)}
-                              className="text-red-500"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
+                      ))
+                  )}
+                  {!budgetLoading &&
+                    filteredBudgetItems.filter((i) =>
+                      i.type.startsWith('despesa')
+                    ).length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                        <p className="font-medium">
+                          Nenhuma despesa planejada neste mês
+                        </p>
                       </div>
-                    ))}
+                    )}
                 </div>
               </div>
             </div>
