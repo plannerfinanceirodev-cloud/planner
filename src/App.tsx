@@ -72,12 +72,6 @@ interface Goal {
   priority: 'baixa' | 'média' | 'alta';
 }
 
-interface CustomCategory {
-  id: string;
-  name: string;
-  type: 'despesa' | 'receita';
-}
-
 interface TipoMovimentacaoOption {
   id: number;
   descricao: string;
@@ -117,14 +111,7 @@ const CoupleFinancialPlanner: React.FC = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
 
-  // --- ESTADOS DE DADOS (COM LOCALSTORAGE) ---
-  const [customCategories, setCustomCategories] = useState<CustomCategory[]>(
-    () => {
-      const saved = localStorage.getItem('customCategories');
-      return saved ? JSON.parse(saved) : [];
-    }
-  );
-
+  // --- ESTADOS DE DADOS ---
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
@@ -172,9 +159,6 @@ const CoupleFinancialPlanner: React.FC = () => {
   );
 
   // --- EFEITOS (SALVAR) ---
-  useEffect(() => {
-    localStorage.setItem('customCategories', JSON.stringify(customCategories));
-  }, [customCategories]);
 
   useEffect(() => {
     let isMounted = true;
@@ -644,19 +628,40 @@ const CoupleFinancialPlanner: React.FC = () => {
   const budgetBalance = budgetRevenue - budgetExpense;
 
   // --- ACTIONS ---
-  const addCustomCategory = () => {
-    if (newCategoryName.trim()) {
-      setCustomCategories([
-        ...customCategories,
-        {
-          id: Date.now().toString(),
-          name: newCategoryName,
-          type: newCategoryType,
-        },
-      ]);
-      setNewCategoryName('');
-      setShowCategoryForm(false);
+  const addCustomCategory = async () => {
+    if (!session?.user) {
+      setBudgetError('Sua sessão expirou. Faça login novamente.');
+      return;
     }
+
+    if (!newCategoryName.trim()) {
+      setBudgetError('Informe o nome da categoria.');
+      return;
+    }
+
+    setBudgetError(null);
+
+    const { data, error } = await supabase
+      .from('categoria_financeira')
+      .insert({
+        descricao: newCategoryName.trim(),
+        tipo: newCategoryType,
+        user_id: session.user.id,
+      })
+      .select('id, descricao, tipo')
+      .single();
+
+    if (error || !data) {
+      setBudgetError('Não foi possível salvar a categoria.');
+      return;
+    }
+
+    setCategoriasFinanceiras((prev) => [
+      ...prev,
+      { id: data.id, descricao: data.descricao, tipo: data.tipo },
+    ]);
+    setNewCategoryName('');
+    setShowCategoryForm(false);
   };
 
   const addTransaction = async () => {
