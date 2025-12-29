@@ -171,22 +171,6 @@ const CoupleFinancialPlanner: React.FC = () => {
     {}
   );
 
-  // Categorias Padrão
-  const predefinedCategories: Record<string, string[]> = {
-    despesa: [
-      'Moradia',
-      'Alimentação',
-      'Transporte',
-      'Saúde',
-      'Educação',
-      'Lazer',
-      'Vestuário',
-      'Contas Fixas',
-      'Outros',
-    ],
-    receita: ['Salário', 'Freelance', 'Investimentos', 'Presentes', 'Outros'],
-  };
-
   // --- EFEITOS (SALVAR) ---
   useEffect(() => {
     localStorage.setItem('customCategories', JSON.stringify(customCategories));
@@ -297,16 +281,16 @@ const CoupleFinancialPlanner: React.FC = () => {
         setTransactionsError('Não foi possível carregar os lançamentos.');
       } else {
         const mapped = (lancamentosResult.data ?? []).map((item) => {
-          const categoria = item.categoria_financeira as {
+          const categoria = normalizeSingle<{
             id: number;
             descricao: string | null;
             tipo: 'despesa' | 'receita';
-          } | null;
-          const tipoMovimentacao = item.tipo_movimentacao as {
+          }>(item.categoria_financeira);
+          const tipoMovimentacao = normalizeSingle<{
             id: number;
             descricao: string;
             tipo: 'despesa' | 'receita';
-          } | null;
+          }>(item.tipo_movimentacao);
 
           return {
             id: item.id,
@@ -503,14 +487,9 @@ const CoupleFinancialPlanner: React.FC = () => {
     return selectedMonth === current;
   };
 
-  const getAllCategories = (fullType: string): string[] => {
-    const baseType = fullType.split('-')[0];
-    const predefined = predefinedCategories[baseType] || [];
-    const custom = customCategories
-      .filter((c) => c.type === baseType)
-      .map((c) => c.name);
-    return [...predefined, ...custom];
-  };
+  const normalizeSingle = <T,>(value: T | T[] | null | undefined): T | null =>
+    Array.isArray(value) ? value[0] ?? null : value ?? null;
+
 
   // --- CÁLCULOS GERAIS ---
   // Filtrar transações do mês selecionado
@@ -727,16 +706,16 @@ const CoupleFinancialPlanner: React.FC = () => {
       return;
     }
 
-    const categoria = data.categoria_financeira as {
+    const categoria = normalizeSingle<{
       id: number;
       descricao: string | null;
       tipo: 'despesa' | 'receita';
-    } | null;
-    const tipoMovimentacao = data.tipo_movimentacao as {
+    }>(data.categoria_financeira);
+    const tipoMovimentacao = normalizeSingle<{
       id: number;
       descricao: string;
       tipo: 'despesa' | 'receita';
-    } | null;
+    }>(data.tipo_movimentacao);
 
     setTransactions([
       ...transactions,
@@ -795,17 +774,42 @@ const CoupleFinancialPlanner: React.FC = () => {
     parcelas_total: number | null;
     parcela_atual: number | null;
     parcelamento_id: string | null;
-    categoria_financeira: {
+    categoria_financeira:
+      | {
+          id: number;
+          descricao: string | null;
+          tipo: 'despesa' | 'receita';
+        }
+      | {
+          id: number;
+          descricao: string | null;
+          tipo: 'despesa' | 'receita';
+        }[]
+      | null;
+    tipo_movimentacao:
+      | {
+          id: number;
+          descricao: string;
+          tipo: 'despesa' | 'receita';
+        }
+      | {
+          id: number;
+          descricao: string;
+          tipo: 'despesa' | 'receita';
+        }[]
+      | null;
+  }): BudgetItem => {
+    const categoria = normalizeSingle<{
       id: number;
       descricao: string | null;
       tipo: 'despesa' | 'receita';
-    } | null;
-    tipo_movimentacao: {
+    }>(item.categoria_financeira);
+    const tipoMovimentacao = normalizeSingle<{
       id: number;
       descricao: string;
       tipo: 'despesa' | 'receita';
-    } | null;
-  }): BudgetItem => {
+    }>(item.tipo_movimentacao);
+
     const installments =
       item.parcelas_total && item.parcela_atual
         ? {
@@ -818,14 +822,14 @@ const CoupleFinancialPlanner: React.FC = () => {
     return {
       id: item.id,
       description: item.descricao,
-      category: item.categoria_financeira?.descricao ?? 'Sem categoria',
+      category: categoria?.descricao ?? 'Sem categoria',
       estimatedAmount: item.valor,
-      type: item.tipo_movimentacao?.tipo ?? 'despesa',
+      type: tipoMovimentacao?.tipo ?? 'despesa',
       dueDate: item.data_vencimento ?? undefined,
       isPaid: item.is_pago,
       installments,
-      tipoMovimentacaoId: item.tipo_movimentacao?.id ?? 0,
-      categoriaFinanceiraId: item.categoria_financeira?.id ?? 0,
+      tipoMovimentacaoId: tipoMovimentacao?.id ?? 0,
+      categoriaFinanceiraId: categoria?.id ?? 0,
     };
   };
 
@@ -1590,14 +1594,16 @@ const CoupleFinancialPlanner: React.FC = () => {
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ name, percent }) =>
-                          `${name} (${(percent * 100).toFixed(0)}%)`
-                        }
+                        label={({ name, percent }) => {
+                          const safePercent =
+                            typeof percent === 'number' ? percent : 0;
+                          return `${name} (${(safePercent * 100).toFixed(0)}%)`;
+                        }}
                         outerRadius={100}
                         fill="#8884d8"
                         dataKey="value"
                       >
-                        {pieData.map((entry, index) => (
+                        {pieData.map((_, index) => (
                           <Cell
                             key={`cell-${index}`}
                             fill={PIE_COLORS[index % PIE_COLORS.length]}
@@ -1673,9 +1679,15 @@ const CoupleFinancialPlanner: React.FC = () => {
                       dataKey="GuardadoPercent"
                       stackId="a"
                       radius={[0, 0, 0, 0]}
-                      label={({ value, GuardadoValor }) => {
-                        if (value > 10) {
-                          return `R$ ${formatCurrency(GuardadoValor)}`;
+                      label={(props) => {
+                        const numericValue = Number((props as any)?.value ?? 0);
+                        if (numericValue > 10) {
+                          const payload = (props as any)?.payload as
+                            | { GuardadoValor?: number }
+                            | undefined;
+                          return `R$ ${formatCurrency(
+                            payload?.GuardadoValor ?? 0
+                          )}`;
                         }
                         return '';
                       }}
@@ -1691,9 +1703,15 @@ const CoupleFinancialPlanner: React.FC = () => {
                       dataKey="FaltaPercent"
                       stackId="a"
                       radius={[4, 4, 0, 0]}
-                      label={({ value, FaltaValor }) => {
-                        if (value > 10) {
-                          return `R$ ${formatCurrency(FaltaValor)}`;
+                      label={(props) => {
+                        const numericValue = Number((props as any)?.value ?? 0);
+                        if (numericValue > 10) {
+                          const payload = (props as any)?.payload as
+                            | { FaltaValor?: number }
+                            | undefined;
+                          return `R$ ${formatCurrency(
+                            payload?.FaltaValor ?? 0
+                          )}`;
                         }
                         return '';
                       }}
