@@ -403,7 +403,7 @@ const CoupleFinancialPlanner: React.FC = () => {
     setSignOutError(null);
     const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) {
-      setSignOutError('Não foi possível sair no servidor, mas a sessão local foi encerrada.');
+      console.error('Não foi possível sair no servidor, mas a sessão local foi encerrada.');
     }
     setSession(null);
     setAuthLoading(false);
