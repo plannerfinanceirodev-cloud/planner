@@ -12,7 +12,6 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Legend,
 } from 'recharts';
 import {
   Heart,
@@ -32,6 +31,7 @@ import {
   CheckCircle,
   Eye,
   EyeOff,
+  PartyPopper,
 } from 'lucide-react';
 
 // --- INTERFACES ---
