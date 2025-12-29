@@ -32,6 +32,7 @@ import {
   Eye,
   EyeOff,
   PartyPopper,
+  LogOut,
 } from 'lucide-react';
 
 // --- INTERFACES ---
@@ -110,6 +111,7 @@ const CoupleFinancialPlanner: React.FC = () => {
   const [authPasswordVisible, setAuthPasswordVisible] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   // --- ESTADOS DE DADOS ---
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -395,6 +397,14 @@ const CoupleFinancialPlanner: React.FC = () => {
     }
 
     setAuthSubmitting(false);
+  };
+
+  const handleLogout = async () => {
+    setSignOutError(null);
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      setSignOutError('Não foi possível sair. Tente novamente.');
+    }
   };
 
   // --- FUNÇÕES AUXILIARES ---
@@ -1324,6 +1334,11 @@ const CoupleFinancialPlanner: React.FC = () => {
       <div className="max-w-7xl mx-auto">
         {/* --- HEADER --- */}
         <header className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+          {signOutError && (
+            <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {signOutError}
+            </div>
+          )}
           <div className="flex flex-row items-center justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-rose-100 rounded-xl">
@@ -1356,15 +1371,23 @@ const CoupleFinancialPlanner: React.FC = () => {
                 </p>
               </div>
             </div>
-            <div className="text-right bg-gray-50 px-6 py-2 rounded-xl border border-gray-100 shrink-0">
-              <p className="text-sm text-gray-500">Saldo Realizado</p>
-              <p
-                className={`text-2xl font-bold ${
-                  saldo >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}
+            <div className="flex flex-col items-end gap-2">
+              <button
+                onClick={handleLogout}
+                className="text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-red-600 border border-gray-200 px-3 py-2 rounded-lg bg-white flex items-center gap-2"
               >
-                R$ {formatCurrency(saldo)}
-              </p>
+                <LogOut size={14} /> Sair
+              </button>
+              <div className="text-right bg-gray-50 px-6 py-2 rounded-xl border border-gray-100 shrink-0">
+                <p className="text-sm text-gray-500">Saldo Realizado</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    saldo >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}
+                >
+                  R$ {formatCurrency(saldo)}
+                </p>
+              </div>
             </div>
           </div>
 
