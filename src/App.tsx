@@ -240,6 +240,13 @@ const CoupleFinancialPlanner: React.FC = () => {
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
 
+//  function getMonthName(monthString: string) {
+//     const [year, month] = monthString.split('-').map(Number);
+//     const date = new Date(year, month - 1);
+//     return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+//  }
+
   useEffect(() => {
     const loadTransactionData = async () => {
       if (!session?.user) {
@@ -436,6 +443,12 @@ const CoupleFinancialPlanner: React.FC = () => {
     const [year, month] = monthString.split('-').map(Number);
     const date = new Date(year, month - 1);
     return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  };
+  
+  const getOnlyMonthName = (monthString: string) => {
+    const [year, month] = monthString.split('-').map(Number);
+    const date = new Date(year, month - 1);
+    return date.toLocaleDateString('pt-BR', { month: 'long' });
   };
 
   const isCurrentMonth = () => {
@@ -1866,7 +1879,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                     <TrendingUp size={18} />
                   </div>
                   <h3 className="text-lg font-bold text-gray-700">
-                    Receitas Planejadas
+                    Receitas Planejadas ({getOnlyMonthName(selectedMonth) })
                   </h3>
                 </div>
                 <div className="space-y-3">
@@ -1930,7 +1943,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   )}
                   {!budgetLoading &&
                     filteredBudgetItems.filter((i) =>
-                      i.type.startsWith('receita')
+                      i.type === "receita"
                     ).length === 0 && (
                       <div className="flex flex-col items-center justify-center py-8 text-gray-400">
                         <p className="font-medium">
@@ -1947,7 +1960,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                     <TrendingDown size={18} />
                   </div>
                   <h3 className="text-lg font-bold text-gray-700">
-                    Despesas Planejadas
+                    Despesas Planejadas ({getOnlyMonthName(selectedMonth)})
                   </h3>
                 </div>
                 <div className="space-y-3">
@@ -2065,7 +2078,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   )}
                   {!budgetLoading &&
                     filteredBudgetItems.filter((i) =>
-                      i.type.startsWith('despesa')
+                      i.type == "receita"
                     ).length === 0 && (
                       <div className="flex flex-col items-center justify-center py-8 text-gray-400">
                         <p className="font-medium">
