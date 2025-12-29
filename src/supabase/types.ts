@@ -89,6 +89,7 @@ export type Database = {
           data_meta: string
           id: number
           nome_meta: string
+          prioridade: string | null
           user_id: string
           valor_alvo: number
           valor_guardado: number | null
@@ -98,6 +99,7 @@ export type Database = {
           data_meta: string
           id?: number
           nome_meta: string
+          prioridade?: string | null
           user_id: string
           valor_alvo: number
           valor_guardado?: number | null
@@ -107,6 +109,7 @@ export type Database = {
           data_meta?: string
           id?: number
           nome_meta?: string
+          prioridade?: string | null
           user_id?: string
           valor_alvo?: number
           valor_guardado?: number | null
