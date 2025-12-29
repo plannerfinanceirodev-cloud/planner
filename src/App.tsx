@@ -64,7 +64,7 @@ interface BudgetItem {
 }
 
 interface Goal {
-  id: string;
+  id: number;
   name: string;
   target: number;
   current: number;
@@ -129,10 +129,7 @@ const CoupleFinancialPlanner: React.FC = () => {
 
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
 
-  const [goals, setGoals] = useState<Goal[]>(() => {
-    const saved = localStorage.getItem('goals');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [goals, setGoals] = useState<Goal[]>([]);
 
   // --- ESTADOS DE FORMULÁRIOS ---
   // Transações
@@ -170,7 +167,7 @@ const CoupleFinancialPlanner: React.FC = () => {
     deadline: '',
     priority: 'média' as const,
   });
-  const [updateAmounts, setUpdateAmounts] = useState<Record<string, string>>(
+  const [updateAmounts, setUpdateAmounts] = useState<Record<number, string>>(
     {}
   );
 
@@ -192,9 +189,8 @@ const CoupleFinancialPlanner: React.FC = () => {
 
   // --- EFEITOS (SALVAR) ---
   useEffect(() => {
-    localStorage.setItem('goals', JSON.stringify(goals));
     localStorage.setItem('customCategories', JSON.stringify(customCategories));
-  }, [goals, customCategories]);
+  }, [customCategories]);
 
   useEffect(() => {
     let isMounted = true;
@@ -239,6 +235,8 @@ const CoupleFinancialPlanner: React.FC = () => {
   );
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [goalsLoading, setGoalsLoading] = useState(false);
+  const [goalsError, setGoalsError] = useState<string | null>(null);
 
 //  function getMonthName(monthString: string) {
 //     const [year, month] = monthString.split('-').map(Number);
@@ -367,6 +365,51 @@ const CoupleFinancialPlanner: React.FC = () => {
     };
 
     loadBudgetData();
+  }, [session?.user]);
+
+  useEffect(() => {
+    const loadGoalsData = async () => {
+      if (!session?.user) {
+        return;
+      }
+
+      setGoalsLoading(true);
+      setGoalsError(null);
+
+      const { data, error } = await supabase
+        .from('objetivos')
+        .select('id, nome_meta, valor_alvo, valor_guardado, data_meta, prioridade')
+        .order('data_meta', { ascending: true });
+
+      if (error) {
+        setGoalsError('Não foi possível carregar as metas.');
+        setGoalsLoading(false);
+        return;
+      }
+
+      const mapped = (data ?? []).map((goal) => {
+        const prioridade =
+          goal.prioridade === 'baixa' ||
+          goal.prioridade === 'média' ||
+          goal.prioridade === 'alta'
+            ? goal.prioridade
+            : 'média';
+
+        return {
+          id: goal.id,
+          name: goal.nome_meta,
+          target: goal.valor_alvo,
+          current: goal.valor_guardado ?? 0,
+          deadline: goal.data_meta,
+          priority: prioridade,
+        } as Goal;
+      });
+
+      setGoals(mapped);
+      setGoalsLoading(false);
+    };
+
+    loadGoalsData();
   }, [session?.user]);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1000,36 +1043,102 @@ const CoupleFinancialPlanner: React.FC = () => {
     );
   };
 
-  const addGoal = () => {
-    if (newGoal.name && newGoal.target) {
-      setGoals([
-        ...goals,
-        {
-          id: Date.now().toString(),
-          ...newGoal,
-          target: parseCurrency(newGoal.target),
-          current: parseCurrency(newGoal.current || '0'),
-        },
-      ]);
-      setNewGoal({
-        name: '',
-        target: '',
-        current: '',
-        deadline: '',
-        priority: 'média',
-      });
+  const addGoal = async () => {
+    if (!session?.user) {
+      setGoalsError('Sua sessão expirou. Faça login novamente.');
+      return;
     }
+
+    if (!newGoal.name || !newGoal.target || !newGoal.deadline) {
+      setGoalsError('Preencha nome, valor alvo e data da meta.');
+      return;
+    }
+
+    setGoalsError(null);
+
+    const { data, error } = await supabase
+      .from('objetivos')
+      .insert({
+        nome_meta: newGoal.name,
+        valor_alvo: parseCurrency(newGoal.target),
+        valor_guardado: parseCurrency(newGoal.current || '0'),
+        data_meta: newGoal.deadline,
+        prioridade: newGoal.priority,
+        user_id: session.user.id,
+      })
+      .select('id, nome_meta, valor_alvo, valor_guardado, data_meta, prioridade')
+      .single();
+
+    if (error || !data) {
+      setGoalsError('Não foi possível salvar a meta.');
+      return;
+    }
+
+    const prioridade =
+      data.prioridade === 'baixa' ||
+      data.prioridade === 'média' ||
+      data.prioridade === 'alta'
+        ? data.prioridade
+        : 'média';
+
+    setGoals([
+      ...goals,
+      {
+        id: data.id,
+        name: data.nome_meta,
+        target: data.valor_alvo,
+        current: data.valor_guardado ?? 0,
+        deadline: data.data_meta,
+        priority: prioridade,
+      },
+    ]);
+
+    setNewGoal({
+      name: '',
+      target: '',
+      current: '',
+      deadline: '',
+      priority: 'média',
+    });
   };
 
-  const updateGoalProgress = (id: string, additionalAmount: number) => {
+  const updateGoalProgress = async (
+    id: number,
+    additionalAmount: number
+  ) => {
+    setGoalsError(null);
+    const goal = goals.find((item) => item.id === id);
+    if (!goal) {
+      return;
+    }
+
+    const nextValue = goal.current + additionalAmount;
+    const { error } = await supabase
+      .from('objetivos')
+      .update({ valor_guardado: nextValue })
+      .eq('id', id);
+
+    if (error) {
+      setGoalsError('Não foi possível atualizar a meta.');
+      return;
+    }
+
     setGoals(
-      goals.map((g) =>
-        g.id === id ? { ...g, current: g.current + additionalAmount } : g
+      goals.map((item) =>
+        item.id === id ? { ...item, current: nextValue } : item
       )
     );
   };
 
-  const deleteGoal = (id: string) => {
+  const deleteGoal = async (id: number) => {
+    setGoalsError(null);
+    const { error } = await supabase.from('objetivos').delete().eq('id', id);
+
+    if (error) {
+      setGoalsError('Não foi possível excluir a meta.');
+      return;
+    }
+
     setGoals(goals.filter((g) => g.id !== id));
   };
 
@@ -2335,6 +2444,11 @@ const CoupleFinancialPlanner: React.FC = () => {
               <h2 className="text-xl font-bold text-gray-800 mb-6">
                 Nova Meta
               </h2>
+              {goalsError && (
+                <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {goalsError}
+                </div>
+              )}
               <div className="space-y-4">
                 <input
                   type="text"
@@ -2388,116 +2502,124 @@ const CoupleFinancialPlanner: React.FC = () => {
                 Minhas Metas
               </h2>
               <div className="space-y-6">
-                {goals.map((g) => {
-                  const percentage = Math.min(
-                    (g.current / g.target) * 100,
-                    100
-                  );
-                  const isCompleted = percentage >= 100;
+                {goalsLoading ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                    <p className="font-medium">Carregando metas...</p>
+                  </div>
+                ) : (
+                  goals.map((g) => {
+                    const percentage = Math.min(
+                      (g.current / g.target) * 100,
+                      100
+                    );
+                    const isCompleted = percentage >= 100;
 
-                  return (
-                    <div
-                      key={g.id}
-                      className={`p-4 rounded-xl border-2 ${
-                        isCompleted
-                          ? 'bg-green-50 border-green-200'
-                          : 'bg-gray-50 border-gray-200'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-gray-800 text-lg">
-                              {g.name}
-                            </span>
-                            {isCompleted && (
-                              <PartyPopper
-                                className="text-green-600"
-                                size={20}
-                              />
+                    return (
+                      <div
+                        key={g.id}
+                        className={`p-4 rounded-xl border-2 ${
+                          isCompleted
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-gray-800 text-lg">
+                                {g.name}
+                              </span>
+                              {isCompleted && (
+                                <PartyPopper
+                                  className="text-green-600"
+                                  size={20}
+                                />
+                              )}
+                            </div>
+                            {g.deadline && (
+                              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                <Calendar size={12} />
+                                Prazo:{' '}
+                                {new Date(g.deadline).toLocaleDateString(
+                                  'pt-BR'
+                                )}
+                              </p>
                             )}
                           </div>
-                          {g.deadline && (
-                            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                              <Calendar size={12} />
-                              Prazo:{' '}
-                              {new Date(g.deadline).toLocaleDateString('pt-BR')}
-                            </p>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => deleteGoal(g.id)}
-                          className="text-gray-400 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-
-                      <div className="mb-3">
-                        <div className="flex justify-between text-sm text-gray-600 mb-1">
-                          <span>R$ {formatCurrency(g.current)}</span>
-                          <span className="font-bold">
-                            {percentage.toFixed(0)}%
-                          </span>
-                          <span>R$ {formatCurrency(g.target)}</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-4">
-                          <div
-                            className={`h-4 rounded-full transition-all duration-500 ${
-                              isCompleted
-                                ? 'bg-green-500'
-                                : 'bg-gradient-to-r from-pink-500 to-purple-500'
-                            }`}
-                            style={{ width: `${percentage}%` }}
-                          ></div>
-                        </div>
-                      </div>
-
-                      {!isCompleted && (
-                        <div className="flex gap-2 mt-3">
-                          <input
-                            type="text"
-                            placeholder="Valor a adicionar"
-                            className="flex-1 p-2 border rounded-lg text-sm bg-white"
-                            value={updateAmounts[g.id] || ''}
-                            onChange={(e) =>
-                              handleCurrencyInput(e.target.value, (val) =>
-                                setUpdateAmounts({
-                                  ...updateAmounts,
-                                  [g.id]: val,
-                                })
-                              )
-                            }
-                          />
                           <button
-                            onClick={() => {
-                              if (updateAmounts[g.id]) {
-                                updateGoalProgress(
-                                  g.id,
-                                  parseCurrency(updateAmounts[g.id])
-                                );
-                                setUpdateAmounts({
-                                  ...updateAmounts,
-                                  [g.id]: '',
-                                });
-                              }
-                            }}
-                            className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:shadow-lg transition-shadow flex items-center gap-1"
+                            onClick={() => deleteGoal(g.id)}
+                            className="text-gray-400 hover:text-red-500 transition-colors"
                           >
-                            <Plus size={16} /> Atualizar
+                            <Trash2 size={18} />
                           </button>
                         </div>
-                      )}
 
-                      {isCompleted && (
-                        <div className="text-center text-green-600 font-bold mt-2">
-                          🎉 Meta Alcançada! 🎉
+                        <div className="mb-3">
+                          <div className="flex justify-between text-sm text-gray-600 mb-1">
+                            <span>R$ {formatCurrency(g.current)}</span>
+                            <span className="font-bold">
+                              {percentage.toFixed(0)}%
+                            </span>
+                            <span>R$ {formatCurrency(g.target)}</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-4">
+                            <div
+                              className={`h-4 rounded-full transition-all duration-500 ${
+                                isCompleted
+                                  ? 'bg-green-500'
+                                  : 'bg-gradient-to-r from-pink-500 to-purple-500'
+                              }`}
+                              style={{ width: `${percentage}%` }}
+                            ></div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {goals.length === 0 && (
+
+                        {!isCompleted && (
+                          <div className="flex gap-2 mt-3">
+                            <input
+                              type="text"
+                              placeholder="Valor a adicionar"
+                              className="flex-1 p-2 border rounded-lg text-sm bg-white"
+                              value={updateAmounts[g.id] || ''}
+                              onChange={(e) =>
+                                handleCurrencyInput(e.target.value, (val) =>
+                                  setUpdateAmounts({
+                                    ...updateAmounts,
+                                    [g.id]: val,
+                                  })
+                                )
+                              }
+                            />
+                            <button
+                              onClick={() => {
+                                if (updateAmounts[g.id]) {
+                                  updateGoalProgress(
+                                    g.id,
+                                    parseCurrency(updateAmounts[g.id])
+                                  );
+                                  setUpdateAmounts({
+                                    ...updateAmounts,
+                                    [g.id]: '',
+                                  });
+                                }
+                              }}
+                              className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:shadow-lg transition-shadow flex items-center gap-1"
+                            >
+                              <Plus size={16} /> Atualizar
+                            </button>
+                          </div>
+                        )}
+
+                        {isCompleted && (
+                          <div className="text-center text-green-600 font-bold mt-2">
+                            🎉 Meta Alcançada! 🎉
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+                {!goalsLoading && goals.length === 0 && (
                   <div className="text-center py-12">
                     <Target size={48} className="mx-auto mb-3 text-gray-300" />
                     <p className="text-gray-400 font-medium">
