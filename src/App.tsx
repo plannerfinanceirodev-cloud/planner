@@ -401,10 +401,12 @@ const CoupleFinancialPlanner: React.FC = () => {
 
   const handleLogout = async () => {
     setSignOutError(null);
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) {
-      setSignOutError('Não foi possível sair. Tente novamente.');
+      setSignOutError('Não foi possível sair no servidor, mas a sessão local foi encerrada.');
     }
+    setSession(null);
+    setAuthLoading(false);
   };
 
   // --- FUNÇÕES AUXILIARES ---
