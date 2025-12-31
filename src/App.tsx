@@ -12,6 +12,7 @@ import {
 interface Transaction {
   id: string;
   date: string;
+  dueDate?: string; // Data de vencimento (para compras no cartão)
   description: string;
   category: string;
   amount: number;
@@ -94,14 +95,16 @@ const CoupleFinancialPlanner: React.FC = () => {
   // --- ESTADOS DE FORMULÁRIOS ---
   // Transações
   const [newTransaction, setNewTransaction] = useState({
-    date: '', description: '', category: '', amount: '', type: 'despesa-fixa' as const, paidBy: 'joint' as const, linkedBudgetId: ''
+    date: '', dueDate: '', description: '', category: '', amount: '', type: 'despesa-fixa' as const, paidBy: 'joint' as const, linkedBudgetId: ''
   });
+  const [dateErrors, setDateErrors] = useState({ date: false, dueDate: false });
 
   // Orçamento
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
   const [newBudgetItem, setNewBudgetItem] = useState({
     description: '', category: '', estimatedAmount: '', type: 'despesa-fixa' as const, dueDate: '', installments: '', paidBy: 'joint' as const
   });
+  const [budgetDateError, setBudgetDateError] = useState(false);
   
   // Nova Categoria
   const [showCategoryForm, setShowCategoryForm] = useState(false);
@@ -112,6 +115,7 @@ const CoupleFinancialPlanner: React.FC = () => {
   const [newGoal, setNewGoal] = useState({
     name: '', target: '', current: '', deadline: '', priority: 'média' as const
   });
+  const [goalDateError, setGoalDateError] = useState(false);
   const [updateAmounts, setUpdateAmounts] = useState<Record<string, string>>({});
 
   // Copiar Orçamento
@@ -124,10 +128,6 @@ const CoupleFinancialPlanner: React.FC = () => {
     receitaVariavel: true,
     despesaPaga: false
   });
-
-  // Edição de Nomes dos Cônjuges
-  const [isEditingSpouseNames, setIsEditingSpouseNames] = useState(false);
-  const [tempSpouseNames, setTempSpouseNames] = useState({ spouse1: '', spouse2: '' });
 
   // Categorias Padrão
   const predefinedCategories: Record<string, string[]> = {
@@ -153,13 +153,6 @@ const CoupleFinancialPlanner: React.FC = () => {
   const parseCurrency = (value: string): number => {
     if (!value) return 0;
     return parseFloat(value.replace(/\./g, '').replace(',', '.'));
-  };
-
-  const saveSpouseNames = () => {
-    if (tempSpouseNames.spouse1.trim() && tempSpouseNames.spouse2.trim()) {
-      setSpouseNames(tempSpouseNames);
-      setIsEditingSpouseNames(false);
-    }
   };
 
   const getPaidByLabel = (paidBy?: 'spouse1' | 'spouse2' | 'joint'): string => {
@@ -329,9 +322,12 @@ const CoupleFinancialPlanner: React.FC = () => {
 
   // --- CÁLCULOS GERAIS ---
   // Filtrar transações do mês selecionado
+  // Filtrar transações do mês selecionado
+  // Se tiver data de vencimento, usa ela; senão usa a data de lançamento
   const filteredTransactions = transactions.filter(t => {
-    if (!t.date) return false;
-    return getMonthYear(t.date) === selectedMonth;
+    const dateToUse = t.dueDate || t.date;
+    if (!dateToUse) return false;
+    return getMonthYear(dateToUse) === selectedMonth;
   });
 
   // Filtrar orçamento do mês selecionado (apenas parcelas do mês atual)
@@ -469,18 +465,64 @@ const CoupleFinancialPlanner: React.FC = () => {
     }
   };
 
+  // Validar se uma data é válida
+  const isValidDate = (dateString: string): boolean => {
+    if (!dateString) return true; // Datas vazias são permitidas (opcional)
+    
+    // Verificar formato básico YYYY-MM-DD (exatamente 4 dígitos para ano, 2 para mês, 2 para dia)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(dateString)) return false;
+    
+    const [yearStr, monthStr, dayStr] = dateString.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const day = parseInt(dayStr, 10);
+    
+    // Verificar limites ANTES de criar o objeto Date
+    if (year < 1900 || year > 2100) return false;
+    if (month < 1 || month > 12) return false;
+    if (day < 1 || day > 31) return false;
+    
+    // Verificar se o ano tem exatamente 4 dígitos (evita 0202, 202, 22, etc)
+    if (yearStr.length !== 4) return false;
+    
+    // Criar objeto Date e verificar se é válida
+    const date = new Date(dateString + 'T00:00:00');
+    if (isNaN(date.getTime())) return false;
+    
+    // Verificar se os componentes correspondem exatamente (evita datas como 2024-13-01 ou 2024-02-30)
+    if (date.getFullYear() !== year) return false;
+    if (date.getMonth() + 1 !== month) return false;
+    if (date.getDate() !== day) return false;
+    
+    return true;
+  };
+
   const addTransaction = () => {
     if (newTransaction.description && newTransaction.amount) {
-      // Se não tiver data, usa o primeiro dia do mês selecionado
+      // Validar data de compra
       const transactionDate = newTransaction.date || `${selectedMonth}-01`;
+      if (!isValidDate(transactionDate)) {
+        alert('❌ Data da compra inválida! Por favor, verifique o dia, mês e ano.\n\nExemplo de data válida: 2024-12-15');
+        return;
+      }
+      
+      // Validar data de vencimento (se fornecida)
+      if (newTransaction.dueDate && !isValidDate(newTransaction.dueDate)) {
+        alert('❌ Data de vencimento inválida! Por favor, verifique o dia, mês e ano.\n\nExemplo de data válida: 2025-01-10');
+        return;
+      }
+      
       setTransactions([...transactions, { 
         id: Date.now().toString(), 
         ...newTransaction, 
         date: transactionDate,
+        dueDate: newTransaction.dueDate || undefined,
         amount: parseCurrency(newTransaction.amount),
         linkedBudgetId: newTransaction.linkedBudgetId || undefined
       }]);
-      setNewTransaction({ description: '', amount: '', date: '', type: 'despesa-fixa', category: '', paidBy: 'joint', linkedBudgetId: '' });
+      setNewTransaction({ description: '', amount: '', date: '', dueDate: '', type: 'despesa-fixa', category: '', paidBy: 'joint', linkedBudgetId: '' });
+      setDateErrors({ date: false, dueDate: false });
     }
   };
   const deleteTransaction = (id: string) => setTransactions(transactions.filter(t => t.id !== id));
@@ -496,6 +538,12 @@ const CoupleFinancialPlanner: React.FC = () => {
         const [year, month] = selectedMonth.split('-').map(Number);
         const lastDay = new Date(year, month, 0).getDate();
         defaultDueDate = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+      }
+      
+      // Validar data de vencimento
+      if (!isValidDate(defaultDueDate)) {
+        alert('❌ Data de vencimento inválida! Por favor, verifique o dia, mês e ano.\n\nExemplo de data válida: 2024-12-31');
+        return;
       }
       
       if (editingBudgetId) {
@@ -542,6 +590,7 @@ const CoupleFinancialPlanner: React.FC = () => {
         }
       }
       setNewBudgetItem({ description: '', category: '', estimatedAmount: '', type: 'despesa-fixa', dueDate: '', installments: '', paidBy: 'joint' });
+      setBudgetDateError(false);
     }
   };
   const startEditingBudget = (item: BudgetItem) => {
@@ -567,8 +616,15 @@ const CoupleFinancialPlanner: React.FC = () => {
 
   const addGoal = () => {
     if (newGoal.name && newGoal.target) {
+      // Validar deadline se fornecido
+      if (newGoal.deadline && !isValidDate(newGoal.deadline)) {
+        alert('❌ Data de prazo inválida! Por favor, verifique o dia, mês e ano.\n\nExemplo de data válida: 2025-12-31');
+        return;
+      }
+      
       setGoals([...goals, { id: Date.now().toString(), ...newGoal, target: parseCurrency(newGoal.target), current: parseCurrency(newGoal.current || '0') }]);
       setNewGoal({ name: '', target: '', current: '', deadline: '', priority: 'média' });
+      setGoalDateError(false);
     }
   };
 
@@ -1105,10 +1161,19 @@ const CoupleFinancialPlanner: React.FC = () => {
                   <input 
                     type="date" 
                     placeholder="Último dia do mês se vazio"
-                    className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" 
+                    className={`w-full p-3 border-2 rounded-xl ${budgetDateError ? 'border-red-500 bg-red-50' : 'border-gray-200 bg-gray-50'}`}
                     value={newBudgetItem.dueDate} 
-                    onChange={e => setNewBudgetItem({...newBudgetItem, dueDate: e.target.value})} 
+                    onChange={e => {
+                      const value = e.target.value;
+                      setNewBudgetItem({...newBudgetItem, dueDate: value});
+                      setBudgetDateError(value !== '' && !isValidDate(value));
+                    }}
+                    min="1900-01-01"
+                    max="2100-12-31"
                   />
+                  {budgetDateError && (
+                    <p className="text-xs text-red-600 mt-1 ml-1">⚠️ Data inválida (ano deve ter 4 dígitos: 1900-2100)</p>
+                  )}
                 </div>
               </div>
               
@@ -1267,22 +1332,72 @@ const CoupleFinancialPlanner: React.FC = () => {
         {activeTab === 'transactions' && (
           <div className="space-y-6">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-6">Novo Lançamento</h2>
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Novo Lançamento</h2>
+              
+              {/* Card informativo sobre data de vencimento */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+                <p className="text-xs text-blue-800">
+                  💡 <strong>Dica:</strong> Use a "Data de Vencimento" para compras no cartão de crédito. A transação aparecerá no mês do vencimento da fatura.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-                <input type="date" className="p-3 border rounded-xl bg-gray-50" value={newTransaction.date} onChange={e => setNewTransaction({...newTransaction, date: e.target.value})} />
-                <input type="text" placeholder="Descrição" className="p-3 border rounded-xl bg-gray-50" value={newTransaction.description} onChange={e => setNewTransaction({...newTransaction, description: e.target.value})} />
+                <div className="lg:col-span-2">
+                  <label className="text-xs text-gray-600 font-semibold ml-1 block mb-1">Data da Compra *</label>
+                  <input 
+                    type="date" 
+                    className={`w-full p-3 border-2 rounded-xl ${dateErrors.date ? 'border-red-500 bg-red-50' : 'border-gray-200 bg-gray-50'}`}
+                    value={newTransaction.date} 
+                    onChange={e => {
+                      const value = e.target.value;
+                      setNewTransaction({...newTransaction, date: value});
+                      setDateErrors({...dateErrors, date: value !== '' && !isValidDate(value)});
+                    }}
+                    min="1900-01-01"
+                    max="2100-12-31"
+                  />
+                  {dateErrors.date && (
+                    <p className="text-xs text-red-600 mt-1 ml-1">⚠️ Data inválida (ano deve ter 4 dígitos: 1900-2100)</p>
+                  )}
+                </div>
+                
+                <div className="lg:col-span-2">
+                  <label className="text-xs text-blue-600 font-semibold ml-1 block mb-1">Data de Vencimento (Opcional)</label>
+                  <input 
+                    type="date" 
+                    className={`w-full p-3 border-2 rounded-xl ${dateErrors.dueDate ? 'border-red-500 bg-red-50' : 'border-blue-300 bg-blue-50'}`}
+                    value={newTransaction.dueDate} 
+                    onChange={e => {
+                      const value = e.target.value;
+                      setNewTransaction({...newTransaction, dueDate: value});
+                      setDateErrors({...dateErrors, dueDate: value !== '' && !isValidDate(value)});
+                    }}
+                    placeholder="Ex: Vencimento da fatura"
+                    min="1900-01-01"
+                    max="2100-12-31"
+                  />
+                  {dateErrors.dueDate && (
+                    <p className="text-xs text-red-600 mt-1 ml-1">⚠️ Data inválida (ano deve ter 4 dígitos: 1900-2100)</p>
+                  )}
+                </div>
+
+                <input type="text" placeholder="Descrição" className="p-3 border rounded-xl bg-gray-50 lg:col-span-2" value={newTransaction.description} onChange={e => setNewTransaction({...newTransaction, description: e.target.value})} />
+                
                 <input type="text" placeholder="Valor" className="p-3 border rounded-xl bg-gray-50" value={newTransaction.amount} onChange={e => handleCurrencyInput(e.target.value, (val) => setNewTransaction({...newTransaction, amount: val}))} />
+                
                 <select className="p-3 border rounded-xl bg-gray-50" value={newTransaction.type} onChange={e => setNewTransaction({...newTransaction, type: e.target.value as any, category: '', linkedBudgetId: ''})}>
                   <option value="despesa-fixa">Despesa Fixa</option>
                   <option value="despesa-variável">Despesa Variável</option>
                   <option value="receita-fixa">Receita Fixa</option>
                   <option value="receita-variável">Receita Variável</option>
                 </select>
+                
                 <select className="p-3 border rounded-xl bg-gray-50" value={newTransaction.paidBy} onChange={e => setNewTransaction({...newTransaction, paidBy: e.target.value as any})}>
                   <option value="joint">Conjunta</option>
                   <option value="spouse1">{spouseNames.spouse1}</option>
                   <option value="spouse2">{spouseNames.spouse2}</option>
                 </select>
+                
                 <select className="p-3 border rounded-xl bg-gray-50 lg:col-span-3" value={newTransaction.category} onChange={e => setNewTransaction({...newTransaction, category: e.target.value, linkedBudgetId: ''})}>
                   <option value="">Selecione Categoria</option>
                   {getAllCategories(newTransaction.type).map(c => <option key={c} value={c}>{c}</option>)}
@@ -1339,7 +1454,12 @@ const CoupleFinancialPlanner: React.FC = () => {
                               📊 {linkedBudget.description}
                             </span>
                           )}
-                          {new Date(t.date).toLocaleDateString('pt-BR')}
+                          {t.dueDate && t.dueDate !== t.date && (
+                            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded mr-2 text-xs font-bold">
+                              💳 Venc: {new Date(t.dueDate).toLocaleDateString('pt-BR')}
+                            </span>
+                          )}
+                          Compra: {new Date(t.date).toLocaleDateString('pt-BR')}
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
@@ -1384,7 +1504,12 @@ const CoupleFinancialPlanner: React.FC = () => {
                               📊 {linkedBudget.description}
                             </span>
                           )}
-                          {new Date(t.date).toLocaleDateString('pt-BR')}
+                          {t.dueDate && t.dueDate !== t.date && (
+                            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded mr-2 text-xs font-bold">
+                              💳 Venc: {new Date(t.dueDate).toLocaleDateString('pt-BR')}
+                            </span>
+                          )}
+                          Compra: {new Date(t.date).toLocaleDateString('pt-BR')}
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
@@ -1441,10 +1566,19 @@ const CoupleFinancialPlanner: React.FC = () => {
                 />
                 <input 
                   type="date" 
-                  className="w-full p-3 border rounded-xl bg-gray-50" 
+                  className={`w-full p-3 border-2 rounded-xl ${goalDateError ? 'border-red-500 bg-red-50' : 'border-gray-200 bg-gray-50'}`}
                   value={newGoal.deadline} 
-                  onChange={e => setNewGoal({...newGoal, deadline: e.target.value})} 
+                  onChange={e => {
+                    const value = e.target.value;
+                    setNewGoal({...newGoal, deadline: value});
+                    setGoalDateError(value !== '' && !isValidDate(value));
+                  }}
+                  min="1900-01-01"
+                  max="2100-12-31"
                 />
+                {goalDateError && (
+                  <p className="text-xs text-red-600 mt-1 ml-1">⚠️ Data inválida (ano deve ter 4 dígitos: 1900-2100)</p>
+                )}
                 <button 
                   onClick={addGoal} 
                   className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white p-3 rounded-xl font-bold hover:shadow-lg transition-shadow"
