@@ -98,16 +98,10 @@ const CoupleFinancialPlanner: React.FC = () => {
   });
 
   // Orçamento
-  const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
   const [newBudgetItem, setNewBudgetItem] = useState({
     description: '', category: '', estimatedAmount: '', type: 'despesa-fixa' as const, dueDate: '', installments: '', paidBy: 'joint' as const
   });
   
-  // Nova Categoria
-  const [showCategoryForm, setShowCategoryForm] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryType, setNewCategoryType] = useState<'despesa' | 'receita'>('despesa');
-
   // Metas
   const [newGoal, setNewGoal] = useState({
     name: '', target: '', current: '', deadline: '', priority: 'média' as const
@@ -155,7 +149,7 @@ const CoupleFinancialPlanner: React.FC = () => {
     return parseFloat(value.replace(/\./g, '').replace(',', '.'));
   };
 
-  const saveSpouseNames = () => {
+  const saveSpouseNames = (): void => {
     if (tempSpouseNames.spouse1.trim() && tempSpouseNames.spouse2.trim()) {
       setSpouseNames(tempSpouseNames);
       setIsEditingSpouseNames(false);
@@ -180,7 +174,7 @@ const CoupleFinancialPlanner: React.FC = () => {
   const getAvailableBudgetItemsForLinking = (type: string, category: string): BudgetItem[] => {
     if (!category) return [];
     
-    return budgetItems.filter(item => {
+    return budgetItems.filter((item: BudgetItem) => {
       const itemMonth = item.dueDate ? getMonthYear(item.dueDate) : selectedMonth;
       return (
         itemMonth === selectedMonth &&
@@ -198,7 +192,7 @@ const CoupleFinancialPlanner: React.FC = () => {
         const transactionMonth = getMonthYear(t.date);
         return t.linkedBudgetId === budgetItemId && transactionMonth === selectedMonth;
       })
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum: number, t: Transaction | BudgetItem) => sum + t.amount, 0);
   };
 
   // Calcular quanto ainda resta de um item de orçamento
@@ -228,24 +222,24 @@ const CoupleFinancialPlanner: React.FC = () => {
   };
 
   // --- FUNÇÕES DE NAVEGAÇÃO DE MÊS ---
-  const getMonthYear = (dateString: string) => {
+  const getMonthYear = (dateString: string): string => {
     const date = new Date(dateString);
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
   };
 
-  const changeMonth = (direction: number) => {
+  const changeMonth = (direction: number): void => {
     const [year, month] = selectedMonth.split('-').map(Number);
     const date = new Date(year, month - 1 + direction, 1);
     setSelectedMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
   };
 
-  const getMonthName = (monthString: string) => {
+  const getMonthName = (monthString: string): string => {
     const [year, month] = monthString.split('-').map(Number);
     const date = new Date(year, month - 1);
     return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   };
 
-  const isCurrentMonth = () => {
+  const isCurrentMonth = (): boolean => {
     const now = new Date();
     const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     return selectedMonth === current;
@@ -254,7 +248,7 @@ const CoupleFinancialPlanner: React.FC = () => {
   const getAllCategories = (fullType: string): string[] => {
     const baseType = fullType.split('-')[0];
     const predefined = predefinedCategories[baseType] || [];
-    const custom = customCategories.filter(c => c.type === baseType).map(c => c.name);
+    const custom = customCategories.filter((c: Transaction) => c.type === baseType).map(c => c.name);
     return [...predefined, ...custom];
   };
 
@@ -275,9 +269,9 @@ const CoupleFinancialPlanner: React.FC = () => {
   };
 
   // Copiar orçamento de um mês anterior
-  const copyBudgetFromMonth = (sourceMonth: string) => {
+  const copyBudgetFromMonth = (sourceMonth: string): void => {
     // Filtrar itens do mês selecionado
-    const itemsToCopy = budgetItems.filter(item => {
+    const itemsToCopy = budgetItems.filter((item: BudgetItem) => {
       if (!item.dueDate) return false;
       const itemMonth = getMonthYear(item.dueDate);
       if (itemMonth !== sourceMonth) return false;
@@ -335,7 +329,7 @@ const CoupleFinancialPlanner: React.FC = () => {
   });
 
   // Filtrar orçamento do mês selecionado (apenas parcelas do mês atual)
-  const filteredBudgetItems = budgetItems.filter(b => {
+  const filteredBudgetItems = budgetItems.filter((b: BudgetItem) => {
     if (!b.dueDate) return false;
     return getMonthYear(b.dueDate) === selectedMonth;
   });
@@ -344,21 +338,21 @@ const CoupleFinancialPlanner: React.FC = () => {
   // IMPORTANTE: Lançamentos vinculados ao orçamento NÃO devem ser contados aqui,
   // pois eles já estão incluídos no valor do orçamento
   const totalReceitasLancadas = filteredTransactions
-    .filter(t => t.type.startsWith('receita') && !t.linkedBudgetId)
-    .reduce((sum, t) => sum + t.amount, 0);
+    .filter((t: Transaction) => t.type.startsWith('receita') && !t.linkedBudgetId)
+    .reduce((sum: number, t: Transaction | BudgetItem) => sum + t.amount, 0);
     
   const totalDespesasLancadas = filteredTransactions
-    .filter(t => t.type.startsWith('despesa') && !t.linkedBudgetId)
-    .reduce((sum, t) => sum + t.amount, 0);
+    .filter((t: Transaction) => t.type.startsWith('despesa') && !t.linkedBudgetId)
+    .reduce((sum: number, t: Transaction | BudgetItem) => sum + t.amount, 0);
   
   // Para o orçamento, consideramos o valor total planejado (não descontamos os gastos vinculados)
   const totalReceitasOrcamento = filteredBudgetItems
-    .filter(b => b.type.startsWith('receita') && !b.isPaid)
-    .reduce((sum, b) => sum + b.estimatedAmount, 0);
+    .filter((b: Transaction) => b.type.startsWith('receita') && !b.isPaid)
+    .reduce((sum: number, b: Transaction | BudgetItem) => sum + b.estimatedAmount, 0);
     
   const totalDespesasOrcamento = filteredBudgetItems
-    .filter(b => b.type.startsWith('despesa') && !b.isPaid)
-    .reduce((sum, b) => sum + b.estimatedAmount, 0);
+    .filter((b: Transaction) => b.type.startsWith('despesa') && !b.isPaid)
+    .reduce((sum: number, b: Transaction | BudgetItem) => sum + b.estimatedAmount, 0);
   
   const totalReceitas = totalReceitasLancadas + totalReceitasOrcamento;
   const totalDespesas = totalDespesasLancadas + totalDespesasOrcamento;
@@ -415,13 +409,13 @@ const CoupleFinancialPlanner: React.FC = () => {
   
   // Adicionar despesas dos lançamentos (EXCETO as vinculadas ao orçamento)
   filteredTransactions
-    .filter(t => t.type.startsWith('despesa') && !t.linkedBudgetId)
+    .filter((t: Transaction) => t.type.startsWith('despesa') && !t.linkedBudgetId)
     .forEach(t => {
       expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
     });
   
   // Adicionar despesas do orçamento (apenas as que não foram pagas)
-  filteredBudgetItems.filter(b => b.type.startsWith('despesa') && !b.isPaid).forEach(b => {
+  filteredBudgetItems.filter((b: Transaction) => b.type.startsWith('despesa') && !b.isPaid).forEach(b => {
     expensesByCategory[b.category] = (expensesByCategory[b.category] || 0) + b.estimatedAmount;
   });
   
@@ -456,8 +450,8 @@ const CoupleFinancialPlanner: React.FC = () => {
   });
 
   // Cálculos Orçamento (igual ao resumo do mês: lançamentos + orçamento não pago)
-  const budgetRevenue = totalReceitasLancadas + filteredBudgetItems.filter(i => i.type.startsWith('receita') && !i.isPaid).reduce((acc, i) => acc + i.estimatedAmount, 0);
-  const budgetExpense = totalDespesasLancadas + filteredBudgetItems.filter(i => i.type.startsWith('despesa') && !i.isPaid).reduce((acc, i) => acc + i.estimatedAmount, 0);
+  const budgetRevenue = totalReceitasLancadas + filteredBudgetItems.filter((i: Transaction) => i.type.startsWith('receita') && !i.isPaid).reduce((acc: number, i: Transaction | BudgetItem) => acc + i.estimatedAmount, 0);
+  const budgetExpense = totalDespesasLancadas + filteredBudgetItems.filter((i: Transaction) => i.type.startsWith('despesa') && !i.isPaid).reduce((acc: number, i: Transaction | BudgetItem) => acc + i.estimatedAmount, 0);
   const budgetBalance = budgetRevenue - budgetExpense;
 
   // --- ACTIONS ---
@@ -469,7 +463,7 @@ const CoupleFinancialPlanner: React.FC = () => {
     }
   };
 
-  const addTransaction = () => {
+  const addTransaction = (): void => {
     if (newTransaction.description && newTransaction.amount) {
       // Se não tiver data, usa o primeiro dia do mês selecionado
       const transactionDate = newTransaction.date || `${selectedMonth}-01`;
@@ -483,9 +477,9 @@ const CoupleFinancialPlanner: React.FC = () => {
       setNewTransaction({ description: '', amount: '', date: '', type: 'despesa-fixa', category: '', paidBy: 'joint', linkedBudgetId: '' });
     }
   };
-  const deleteTransaction = (id: string) => setTransactions(transactions.filter(t => t.id !== id));
+  const deleteTransaction = (id: string): void => setTransactions(transactions.filter((t: Transaction) => t.id !== id));
 
-  const saveBudgetItem = () => {
+  const saveBudgetItem = (): void => {
     if (newBudgetItem.description && newBudgetItem.estimatedAmount) {
       const amount = typeof newBudgetItem.estimatedAmount === 'string' ? parseCurrency(newBudgetItem.estimatedAmount) : newBudgetItem.estimatedAmount;
       const installmentsCount = newBudgetItem.installments && newBudgetItem.installments.trim() !== '' ? parseInt(newBudgetItem.installments) : 0;
@@ -499,7 +493,7 @@ const CoupleFinancialPlanner: React.FC = () => {
       }
       
       if (editingBudgetId) {
-        setBudgetItems(budgetItems.map(item => item.id === editingBudgetId ? { ...item, ...newBudgetItem, estimatedAmount: amount } : item));
+        setBudgetItems(budgetItems.map((item: Transaction) => item.id === editingBudgetId ? { ...item, ...newBudgetItem, estimatedAmount: amount } : item));
         setEditingBudgetId(null);
       } else {
         // Se tem parcelamento válido (maior que 1) e tem data de vencimento, criar múltiplas entradas
@@ -557,15 +551,15 @@ const CoupleFinancialPlanner: React.FC = () => {
     setEditingBudgetId(item.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  const deleteBudgetItem = (id: string) => setBudgetItems(budgetItems.filter(i => i.id !== id));
+  const deleteBudgetItem = (id: string): void => setBudgetItems(budgetItems.filter((i: Transaction) => i.id !== id));
 
   const toggleBudgetItemPaid = (id: string) => {
-    setBudgetItems(budgetItems.map(item => 
+    setBudgetItems(budgetItems.map((item: BudgetItem) => 
       item.id === id ? { ...item, isPaid: !item.isPaid } : item
     ));
   };
 
-  const addGoal = () => {
+  const addGoal = (): void => {
     if (newGoal.name && newGoal.target) {
       setGoals([...goals, { id: Date.now().toString(), ...newGoal, target: parseCurrency(newGoal.target), current: parseCurrency(newGoal.current || '0') }]);
       setNewGoal({ name: '', target: '', current: '', deadline: '', priority: 'média' });
@@ -578,8 +572,8 @@ const CoupleFinancialPlanner: React.FC = () => {
     ));
   };
 
-  const deleteGoal = (id: string) => {
-    setGoals(goals.filter(g => g.id !== id));
+  const deleteGoal = (id: string): void => {
+    setGoals(goals.filter((g: Transaction) => g.id !== id));
   };
 
   // --- FUNÇÕES DE ALERTAS ---
@@ -601,7 +595,7 @@ const CoupleFinancialPlanner: React.FC = () => {
     const bills: Array<{id: string, description: string, amount: number, date: string, category: string, source: 'transaction' | 'budget', isPaid?: boolean}> = [];
     
     // Adicionar despesas de transações do mês atual (já pagas)
-    filteredTransactions.filter(t => t.type.startsWith('despesa') && t.date).forEach(t => {
+    filteredTransactions.filter((t: Transaction) => t.type.startsWith('despesa') && t.date).forEach(t => {
       bills.push({
         id: t.id,
         description: t.description,
@@ -614,7 +608,7 @@ const CoupleFinancialPlanner: React.FC = () => {
     });
 
     // Adicionar despesas de orçamento do mês atual APENAS se forem vencidas ou vencerem nos próximos 7 dias
-    filteredBudgetItems.filter(b => b.type.startsWith('despesa')).forEach(b => {
+    filteredBudgetItems.filter((b: Transaction) => b.type.startsWith('despesa')).forEach(b => {
       // Usar a data de vencimento se disponível, caso contrário usar o último dia do mês
       let dueDate: string;
       if (b.dueDate) {
@@ -1014,11 +1008,11 @@ const CoupleFinancialPlanner: React.FC = () => {
                 <div className="mb-6 bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex flex-col md:flex-row gap-3 items-end">
                   <div className="w-full">
                     <label className="text-xs text-indigo-800 font-bold ml-1">Nome</label>
-                    <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} className="w-full p-2 rounded-lg border border-indigo-200 text-sm" />
+                    <input type="text" value={newCategoryName} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewCategoryName(e.target.value)} className="w-full p-2 rounded-lg border border-indigo-200 text-sm" />
                   </div>
                   <div className="w-full md:w-48">
                     <label className="text-xs text-indigo-800 font-bold ml-1">Tipo</label>
-                    <select value={newCategoryType} onChange={e => setNewCategoryType(e.target.value as any)} className="w-full p-2 rounded-lg border border-indigo-200 text-sm">
+                    <select value={newCategoryType} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewCategoryType(e.target.value as any)} className="w-full p-2 rounded-lg border border-indigo-200 text-sm">
                       <option value="despesa">Despesa</option>
                       <option value="receita">Receita</option>
                     </select>
@@ -1038,7 +1032,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                     placeholder="Ex: Aluguel" 
                     className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" 
                     value={newBudgetItem.description} 
-                    onChange={e => setNewBudgetItem({...newBudgetItem, description: e.target.value})} 
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewBudgetItem({...newBudgetItem, description: e.target.value})} 
                   />
                 </div>
                 <div>
@@ -1046,7 +1040,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   <select 
                     className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" 
                     value={newBudgetItem.type} 
-                    onChange={e => setNewBudgetItem({...newBudgetItem, type: e.target.value as any})}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewBudgetItem({...newBudgetItem, type: e.target.value as any})}
                   >
                     <option value="receita-fixa">Receita Fixa</option>
                     <option value="receita-variável">Receita Variável</option>
@@ -1059,7 +1053,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   <select 
                     className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" 
                     value={newBudgetItem.category} 
-                    onChange={e => setNewBudgetItem({...newBudgetItem, category: e.target.value})}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewBudgetItem({...newBudgetItem, category: e.target.value})}
                   >
                     <option value="">Selecione...</option>
                     {getAllCategories(newBudgetItem.type).map(c => <option key={c} value={c}>{c}</option>)}
@@ -1070,7 +1064,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   <select 
                     className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" 
                     value={newBudgetItem.paidBy} 
-                    onChange={e => setNewBudgetItem({...newBudgetItem, paidBy: e.target.value as any})}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewBudgetItem({...newBudgetItem, paidBy: e.target.value as any})}
                   >
                     <option value="joint">Conjunta</option>
                     <option value="spouse1">{spouseNames.spouse1}</option>
@@ -1084,7 +1078,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                     placeholder="0,00" 
                     className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" 
                     value={newBudgetItem.estimatedAmount} 
-                    onChange={e => handleCurrencyInput(e.target.value, (val) => setNewBudgetItem({...newBudgetItem, estimatedAmount: val}))} 
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => handleCurrencyInput(e.target.value, (val) => setNewBudgetItem({...newBudgetItem, estimatedAmount: val}))} 
                   />
                 </div>
                 <div>
@@ -1095,7 +1089,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                     min="1"
                     className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" 
                     value={newBudgetItem.installments} 
-                    onChange={e => setNewBudgetItem({...newBudgetItem, installments: e.target.value})} 
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewBudgetItem({...newBudgetItem, installments: e.target.value})} 
                   />
                 </div>
                 <div>
@@ -1107,7 +1101,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                     placeholder="Último dia do mês se vazio"
                     className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50" 
                     value={newBudgetItem.dueDate} 
-                    onChange={e => setNewBudgetItem({...newBudgetItem, dueDate: e.target.value})} 
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewBudgetItem({...newBudgetItem, dueDate: e.target.value})} 
                   />
                 </div>
               </div>
@@ -1130,7 +1124,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   <h3 className="text-lg font-bold text-gray-700">Receitas Planejadas</h3>
                 </div>
                 <div className="space-y-3">
-                  {filteredBudgetItems.filter(i => i.type.startsWith('receita')).map(item => {
+                  {filteredBudgetItems.filter((i: Transaction) => i.type.startsWith('receita')).map(item => {
                     const spent = getSpentFromBudget(item.id);
                     const remaining = getRemainingBudget(item);
                     const hasLinkedTransactions = spent > 0;
@@ -1188,7 +1182,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   <h3 className="text-lg font-bold text-gray-700">Despesas Planejadas</h3>
                 </div>
                 <div className="space-y-3">
-                  {filteredBudgetItems.filter(i => i.type.startsWith('despesa')).map(item => {
+                  {filteredBudgetItems.filter((i: Transaction) => i.type.startsWith('despesa')).map(item => {
                     const spent = getSpentFromBudget(item.id);
                     const remaining = getRemainingBudget(item);
                     const hasLinkedTransactions = spent > 0;
@@ -1269,21 +1263,21 @@ const CoupleFinancialPlanner: React.FC = () => {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-xl font-bold text-gray-800 mb-6">Novo Lançamento</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-                <input type="date" className="p-3 border rounded-xl bg-gray-50" value={newTransaction.date} onChange={e => setNewTransaction({...newTransaction, date: e.target.value})} />
-                <input type="text" placeholder="Descrição" className="p-3 border rounded-xl bg-gray-50" value={newTransaction.description} onChange={e => setNewTransaction({...newTransaction, description: e.target.value})} />
-                <input type="text" placeholder="Valor" className="p-3 border rounded-xl bg-gray-50" value={newTransaction.amount} onChange={e => handleCurrencyInput(e.target.value, (val) => setNewTransaction({...newTransaction, amount: val}))} />
-                <select className="p-3 border rounded-xl bg-gray-50" value={newTransaction.type} onChange={e => setNewTransaction({...newTransaction, type: e.target.value as any, category: '', linkedBudgetId: ''})}>
+                <input type="date" className="p-3 border rounded-xl bg-gray-50" value={newTransaction.date} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewTransaction({...newTransaction, date: e.target.value})} />
+                <input type="text" placeholder="Descrição" className="p-3 border rounded-xl bg-gray-50" value={newTransaction.description} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewTransaction({...newTransaction, description: e.target.value})} />
+                <input type="text" placeholder="Valor" className="p-3 border rounded-xl bg-gray-50" value={newTransaction.amount} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => handleCurrencyInput(e.target.value, (val) => setNewTransaction({...newTransaction, amount: val}))} />
+                <select className="p-3 border rounded-xl bg-gray-50" value={newTransaction.type} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewTransaction({...newTransaction, type: e.target.value as any, category: '', linkedBudgetId: ''})}>
                   <option value="despesa-fixa">Despesa Fixa</option>
                   <option value="despesa-variável">Despesa Variável</option>
                   <option value="receita-fixa">Receita Fixa</option>
                   <option value="receita-variável">Receita Variável</option>
                 </select>
-                <select className="p-3 border rounded-xl bg-gray-50" value={newTransaction.paidBy} onChange={e => setNewTransaction({...newTransaction, paidBy: e.target.value as any})}>
+                <select className="p-3 border rounded-xl bg-gray-50" value={newTransaction.paidBy} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewTransaction({...newTransaction, paidBy: e.target.value as any})}>
                   <option value="joint">Conjunta</option>
                   <option value="spouse1">{spouseNames.spouse1}</option>
                   <option value="spouse2">{spouseNames.spouse2}</option>
                 </select>
-                <select className="p-3 border rounded-xl bg-gray-50 lg:col-span-3" value={newTransaction.category} onChange={e => setNewTransaction({...newTransaction, category: e.target.value, linkedBudgetId: ''})}>
+                <select className="p-3 border rounded-xl bg-gray-50 lg:col-span-3" value={newTransaction.category} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewTransaction({...newTransaction, category: e.target.value, linkedBudgetId: ''})}>
                   <option value="">Selecione Categoria</option>
                   {getAllCategories(newTransaction.type).map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -1293,7 +1287,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   <select 
                     className="p-3 border-2 border-purple-300 rounded-xl bg-purple-50 lg:col-span-2" 
                     value={newTransaction.linkedBudgetId} 
-                    onChange={e => setNewTransaction({...newTransaction, linkedBudgetId: e.target.value})}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewTransaction({...newTransaction, linkedBudgetId: e.target.value})}
                   >
                     <option value="">Não descontar do orçamento</option>
                     {getAvailableBudgetItemsForLinking(newTransaction.type, newTransaction.category).map(item => {
@@ -1323,7 +1317,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   <h3 className="text-lg font-bold text-gray-800">Histórico de Receitas</h3>
                 </div>
                 <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                  {filteredTransactions.filter(t => t.type.includes('receita')).slice().reverse().map(t => {
+                  {filteredTransactions.filter((t: Transaction) => t.type.includes('receita')).slice().reverse().map(t => {
                     const linkedBudget = t.linkedBudgetId ? budgetItems.find(b => b.id === t.linkedBudgetId) : null;
                     return (
                     <div key={t.id} className="flex justify-between items-center p-4 border border-gray-100 rounded-xl hover:bg-green-50 transition-colors group">
@@ -1351,7 +1345,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                     </div>
                     );
                   })}
-                  {filteredTransactions.filter(t => t.type.includes('receita')).length === 0 && (
+                  {filteredTransactions.filter((t: Transaction) => t.type.includes('receita')).length === 0 && (
                     <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                       <TrendingUp size={48} className="mb-3 opacity-20" />
                       <p className="font-medium">Nenhuma receita lançada neste mês</p>
@@ -1368,7 +1362,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                   <h3 className="text-lg font-bold text-gray-800">Histórico de Despesas</h3>
                 </div>
                 <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                  {filteredTransactions.filter(t => t.type.includes('despesa')).slice().reverse().map(t => {
+                  {filteredTransactions.filter((t: Transaction) => t.type.includes('despesa')).slice().reverse().map(t => {
                     const linkedBudget = t.linkedBudgetId ? budgetItems.find(b => b.id === t.linkedBudgetId) : null;
                     return (
                     <div key={t.id} className="flex justify-between items-center p-4 border border-gray-100 rounded-xl hover:bg-red-50 transition-colors group">
@@ -1396,7 +1390,7 @@ const CoupleFinancialPlanner: React.FC = () => {
                     </div>
                     );
                   })}
-                  {filteredTransactions.filter(t => t.type.includes('despesa')).length === 0 && (
+                  {filteredTransactions.filter((t: Transaction) => t.type.includes('despesa')).length === 0 && (
                     <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                       <TrendingDown size={48} className="mb-3 opacity-20" />
                       <p className="font-medium">Nenhuma despesa lançada neste mês</p>
@@ -1423,27 +1417,27 @@ const CoupleFinancialPlanner: React.FC = () => {
                   placeholder="Nome da Meta (Ex: Viagem)" 
                   className="w-full p-3 border rounded-xl bg-gray-50" 
                   value={newGoal.name} 
-                  onChange={e => setNewGoal({...newGoal, name: e.target.value})} 
+                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewGoal({...newGoal, name: e.target.value})} 
                 />
                 <input 
                   type="text" 
                   placeholder="Valor Alvo" 
                   className="w-full p-3 border rounded-xl bg-gray-50" 
                   value={newGoal.target} 
-                  onChange={e => handleCurrencyInput(e.target.value, (val) => setNewGoal({...newGoal, target: val}))} 
+                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => handleCurrencyInput(e.target.value, (val) => setNewGoal({...newGoal, target: val}))} 
                 />
                 <input 
                   type="text" 
                   placeholder="Já guardado (Opcional)" 
                   className="w-full p-3 border rounded-xl bg-gray-50" 
                   value={newGoal.current} 
-                  onChange={e => handleCurrencyInput(e.target.value, (val) => setNewGoal({...newGoal, current: val}))} 
+                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => handleCurrencyInput(e.target.value, (val) => setNewGoal({...newGoal, current: val}))} 
                 />
                 <input 
                   type="date" 
                   className="w-full p-3 border rounded-xl bg-gray-50" 
                   value={newGoal.deadline} 
-                  onChange={e => setNewGoal({...newGoal, deadline: e.target.value})} 
+                  onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setNewGoal({...newGoal, deadline: e.target.value})} 
                 />
                 <button 
                   onClick={addGoal} 
