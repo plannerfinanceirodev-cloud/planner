@@ -1,14 +1,80 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
-    <script src="https://cdn.tailwindcss.com"></script>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="/src/assets/favicon.ico" />
+    
+    <!-- Viewport para responsividade -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Nosso planner</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Planner Financeiro para Casais - Gerencie suas finanças em casal de forma simples, intuitiva e sincronizada na nuvem com Firebase." />
+    <meta name="keywords" content="planner financeiro, finanças casal, orçamento familiar, gestão financeira, controle de gastos" />
+    <meta name="author" content="Seu Nome" />
+    <meta name="robots" content="index, follow" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://seu-projeto.web.app/" />
+    <meta property="og:title" content="💰 Planner Financeiro para Casais" />
+    <meta property="og:description" content="Gerencie suas finanças em casal de forma simples e sincronizada na nuvem" />
+    <meta property="og:image" content="https://seu-projeto.web.app/og-image.png" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://seu-projeto.web.app/" />
+    <meta property="twitter:title" content="💰 Planner Financeiro para Casais" />
+    <meta property="twitter:description" content="Gerencie suas finanças em casal de forma simples e sincronizada na nuvem" />
+    <meta property="twitter:image" content="https://seu-projeto.web.app/og-image.png" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#ec4899" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Preconnect para melhor performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
+    <!-- Title -->
+    <title>💰 Planner Financeiro para Casais</title>
+    
+    <!-- Google Fonts (Opcional - Tailwind já vem com boas fontes) -->
+    <!-- <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" /> -->
   </head>
+  
   <body>
+    <!-- Root do React -->
     <div id="root"></div>
+    
+    <!-- Loading Screen -->
+    <noscript>
+      <div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background: linear-gradient(to bottom right, #fce7f3, #f3e8ff, #dbeafe);
+        font-family: system-ui, -apple-system, sans-serif;
+        text-align: center;
+        padding: 20px;
+      ">
+        <div>
+          <h1 style="font-size: 2rem; font-weight: bold; color: #1f2937; margin-bottom: 1rem;">
+            💰 Planner Financeiro
+          </h1>
+          <p style="color: #6b7280; font-size: 1.125rem;">
+            Você precisa habilitar JavaScript para usar este aplicativo.
+          </p>
+        </div>
+      </div>
+    </noscript>
+    
+    <!-- Main Script -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
